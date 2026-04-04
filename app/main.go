@@ -5,10 +5,7 @@ import (
 	"io"
 	"net"
 	"os"
-	"sync/atomic"
 )
-
-var clientCount int64 = 0
 
 func main() {
 	l, err := net.Listen("tcp", "0.0.0.0:6379")
@@ -26,8 +23,6 @@ func main() {
 			fmt.Println("Error accepting connection: ", err.Error())
 			continue
 		}
-		newCount := atomic.AddInt64(&clientCount, 1)
-		fmt.Printf("New client connected. Total clients: %d\n", newCount)
 
 		go handleClient(conn)
 	}
@@ -36,8 +31,6 @@ func main() {
 func handleClient(conn net.Conn) {
 	defer func() {
 		conn.Close()
-		newCount := atomic.AddInt64(&clientCount, -1)
-		fmt.Printf("Client disconnected. Total clients: %d\n", newCount)
 	}()
 	buf := make([]byte, 1024)
 	for {
