@@ -8,10 +8,16 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
+type Value struct {
+	data      string
+	expiresAt time.Time
+}
+
 var (
-	dataStore = make(map[string]string)
+	dataStore = make(map[string]Value)
 	mu        sync.RWMutex
 )
 
@@ -117,24 +123,51 @@ func handleClient(conn net.Conn) {
 
 				}
 			case "SET":
-				if len(parts) > 2 {
-					mu.Lock()
-					dataStore[parts[1]] = parts[2]
-					mu.Unlock()
-					conn.Write([]byte("+OK\r\n"))
-				}
-
-			case "GET":
-				if len(parts) < 2 {
-					conn.Write([]byte("-ERR wrong number of arguments for 'get' command\r\n"))
+				if len(parts) < 3 {
+					conn.Write([]byte("-ERR wrong number of arguments\r\n"))
 					continue
 				}
+
+				key := parts[1]
+				val := parts[2]
+				var expiry time.Time
+
+				// Check for PX (milliseconds) or EX (seconds)
+				if len(parts) >= 5 {
+					option := strings.ToUpper(parts[3])
+					expiryValue, _ := strconv.Atoi(parts[4])
+
+					if option == "EX" {
+						expiry = time.Now().Add(time.Duration(expiryValue) * time.Second)
+					} else if option == "PX" {
+						expiry = time.Now().Add(time.Duration(expiryValue) * time.Millisecond)
+					}
+				}
+
+				mu.Lock()
+				dataStore[key] = Value{
+					data:      val,
+					expiresAt: expiry,
+				}
+				mu.Unlock()
+				conn.Write([]byte("+OK\r\n"))
+
+			case "GET":
+				key := parts[1]
+
 				mu.RLock()
-				value, exists := dataStore[parts[1]]
+				val, exists := dataStore[key]
 				mu.RUnlock()
+
+				if exists && !val.expiresAt.IsZero() && time.Now().After(val.expiresAt) {
+					mu.Lock()
+					delete(dataStore, key)
+					mu.Unlock()
+					exists = false
+				}
+
 				if exists {
-					response := fmt.Sprintf("$%d\r\n%s\r\n", len(value), value)
-					conn.Write([]byte(response))
+					conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len(val.data), val.data)))
 				} else {
 					conn.Write([]byte("$-1\r\n"))
 				}
