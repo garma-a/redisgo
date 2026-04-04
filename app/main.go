@@ -46,7 +46,7 @@ func handleClient(conn net.Conn) {
 		if string(buf[:n]) == "*1\r\n$4\r\nPING\r\n" {
 			conn.Write([]byte("+PONG\r\n"))
 		} else if n > 0 {
-			conn.Write([]byte(buf[:n]))
+			conn.Write([]byte(buf[5:n]))
 		}
 	}
 }
