@@ -7,6 +7,12 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
+)
+
+var (
+	dataStore = make(map[string]string)
+	mu        sync.RWMutex
 )
 
 func parseRESP(data []byte) ([]string, error) {
@@ -19,6 +25,17 @@ func parseRESP(data []byte) ([]string, error) {
 	//
 	// numElements, _ := strconv.Atoi(parts[0][1:]):
 	// It looks at *2, skips the *, and converts the 2 into an integer. Now the code knows it needs to find 2 words
+	// The for loop:
+	//
+	// First pass (i=0): It sees $4. It confirms it starts with $. It skips the $4 line and grabs the next line: "ECHO".
+	//
+	// Second pass (i=1): It sees $2. It skips it and grabs the next line: "HI".
+	//
+	// result = append(result, parts[idx]):
+	// It adds these words to a Go slice: ["ECHO", "HI"].
+	//
+	// return result, nil:
+	// It sends the clean list of words back to the handler.
 	str := string(data)
 	parts := strings.Split(str, "\r\n")
 	if len(parts) < 1 {
@@ -89,11 +106,38 @@ func handleClient(conn net.Conn) {
 		parts, err := parseRESP(buf[:n])
 		if err == nil && len(parts) > 0 {
 			command := strings.ToUpper(parts[0])
-			if command == "PING" {
+			switch command {
+			case "PING":
 				conn.Write([]byte("+PONG\r\n"))
-			} else if command == "ECHO" && len(parts) > 1 {
-				response := fmt.Sprintf("$%d\r\n%s\r\n", len(parts[1]), parts[1])
-				conn.Write([]byte(response))
+			case "ECHO":
+				if len(parts) > 1 {
+
+					response := fmt.Sprintf("$%d\r\n%s\r\n", len(parts[1]), parts[1])
+					conn.Write([]byte(response))
+
+				}
+			case "SET":
+				if len(parts) > 2 {
+					mu.Lock()
+					dataStore[parts[1]] = parts[2]
+					mu.Unlock()
+					conn.Write([]byte("+OK\r\n"))
+				}
+
+			case "GET":
+				if len(parts) < 2 {
+					conn.Write([]byte("-ERR wrong number of arguments for 'get' command\r\n"))
+					continue
+				}
+				mu.RLock()
+				value, exists := dataStore[parts[1]]
+				mu.RUnlock()
+				if exists {
+					response := fmt.Sprintf("$%d\r\n%s\r\n", len(value), value)
+					conn.Write([]byte(response))
+				} else {
+					conn.Write([]byte("$-1\r\n"))
+				}
 			}
 		}
 	}
