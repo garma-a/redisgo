@@ -13,8 +13,8 @@ import (
 
 func HandleClient(conn net.Conn, db *store.DB) {
 	defer conn.Close()
-	buf := make([]byte, 1024)
 
+	buf := make([]byte, 1024)
 	for {
 		n, err := conn.Read(buf)
 		if err != nil {
@@ -41,6 +41,7 @@ func HandleClient(conn net.Conn, db *store.DB) {
 			handleGet(conn, db, parts)
 		}
 	}
+
 }
 
 func handleSet(conn net.Conn, db *store.DB, parts []string) {
