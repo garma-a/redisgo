@@ -75,6 +75,12 @@ func HandleClient(conn net.Conn, db *store.DB) {
 				continue
 			}
 			handleLLEN(conn, db, parts)
+		case "LPOP":
+			if len(parts) < 2 {
+				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
+				continue
+			}
+			handleLPop(conn, db, parts)
 		}
 	}
 

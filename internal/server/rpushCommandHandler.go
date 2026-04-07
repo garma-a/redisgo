@@ -40,3 +40,13 @@ func handleLPush(conn net.Conn, db *store.DB, parts []string) {
 func handleLLEN(conn net.Conn, db *store.DB, parts []string) {
 	conn.Write([]byte(fmt.Sprintf(":%d\r\n", db.LLEN(parts[1]))))
 }
+
+func handleLPop(conn net.Conn, db *store.DB, parts []string) {
+	val := db.LPop(parts[1])
+	if val != "" {
+		conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len(val), val)))
+	} else {
+		conn.Write([]byte("$-1\r\n"))
+	}
+
+}

@@ -115,6 +115,17 @@ func (db *DB) LPushMany(key string, values []string) int {
 	return len(db.lists[key])
 }
 
+func (db *DB) LPop(key string) string {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	val := ""
+	if lst, exists := db.lists[key]; exists && len(lst) > 0 {
+		val = lst[0]
+		db.lists[key] = db.lists[key][1:]
+	}
+	return val
+}
+
 func (db *DB) LLEN(key string) int {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
