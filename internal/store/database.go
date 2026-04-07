@@ -118,5 +118,9 @@ func (db *DB) LPushMany(key string, values []string) int {
 func (db *DB) LLEN(key string) int {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
-	return len(db.lists[key])
+	if lst, exists := db.lists[key]; exists {
+		return len(lst)
+	} else {
+		return 0
+	}
 }
