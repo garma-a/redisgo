@@ -1,6 +1,7 @@
 package store
 
 import (
+	"slices"
 	"sync"
 	"time"
 )
@@ -109,10 +110,7 @@ func (db *DB) LPush(key string, value string) int {
 func (db *DB) LPushMany(key string, values []string) int {
 	db.mu.Lock()
 	defer db.mu.Unlock()
-	newList := make([]string, 0, len(values))
-	for _, v := range values {
-		newList = append(newList, v)
-	}
-	db.lists[key] = append(newList, db.lists[key]...)
+	slices.Reverse(values)
+	db.lists[key] = append(values, db.lists[key]...)
 	return len(db.lists[key])
 }
