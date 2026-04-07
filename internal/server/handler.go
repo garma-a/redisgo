@@ -57,6 +57,12 @@ func HandleClient(conn net.Conn, db *store.DB) {
 				continue
 			}
 			handleRPush(conn, db, parts)
+		case "LRANGE":
+			if len(parts) < 4 {
+				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
+				continue
+			}
+			handleLRange(conn, db, parts)
 		}
 	}
 

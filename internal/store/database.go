@@ -69,6 +69,29 @@ func (db *DB) RPushMany(key string, values []string) []string {
 	db.mu.Unlock()
 	return db.lists
 }
+func (db *DB) LRange(start, stop int) []string {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+	if start < 0 {
+		start = len(db.lists) + start
+	}
+	if start < 0 {
+		start = 0
+	}
+	if stop < 0 {
+		stop = len(db.lists) + stop
+	}
+	if stop < 0 {
+		stop = 0
+	}
+	if stop >= len(db.lists) {
+		stop = len(db.lists) - 1
+	}
+	if start > stop {
+		return []string{}
+	}
+	return db.lists[start : stop+1]
+}
 
 func (db *DB) LLen() int {
 	db.mu.RLock()
