@@ -22,12 +22,20 @@ import (
 //
 // The returned slice for this example will be: ["ECHO", "HI"]
 func Parse(data []byte) ([]string, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("empty input")
+	}
+
 	str := string(data)
 	parts := strings.Split(str, "\r\n")
-	if len(parts) < 1 {
+	if len(parts) == 0 || len(parts[0]) == 0 {
 		return nil, fmt.Errorf("empty input")
 	}
 	if parts[0][0] == '*' {
+		if len(parts[0]) < 2 {
+			return nil, fmt.Errorf("invalid array format")
+		}
+
 		numElements, err := strconv.Atoi(parts[0][1:])
 		if err != nil {
 			return nil, fmt.Errorf("invalid array format")
@@ -35,19 +43,26 @@ func Parse(data []byte) ([]string, error) {
 		result := []string{}
 		idx := 1
 		for range numElements {
-			if idx >= len(parts) {
+			if idx >= len(parts) || len(parts[idx]) == 0 {
 				return nil, fmt.Errorf("incomplete data")
 			}
 			if parts[idx][0] != '$' {
 				return nil, fmt.Errorf("expected bulk string")
 			}
-			_, err := strconv.Atoi(parts[idx][1:])
-			if err != nil {
+			if len(parts[idx]) < 2 {
+				return nil, fmt.Errorf("invalid length")
+			}
+
+			bulkLen, err := strconv.Atoi(parts[idx][1:])
+			if err != nil || bulkLen < 0 {
 				return nil, fmt.Errorf("invalid length")
 			}
 			idx++
 			if idx >= len(parts) {
 				return nil, fmt.Errorf("incomplete data")
+			}
+			if len(parts[idx]) != bulkLen {
+				return nil, fmt.Errorf("invalid bulk string length")
 			}
 			result = append(result, parts[idx])
 			idx++

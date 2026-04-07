@@ -28,26 +28,43 @@ func HandleClient(conn net.Conn, db *store.DB) {
 		if err != nil {
 			continue
 		}
-
+		if len(parts) == 0 || parts[0] == "" {
+			continue
+		}
 		command := strings.ToUpper(parts[0])
 		switch command {
 		case "PING":
 			conn.Write([]byte("+PONG\r\n"))
 		case "ECHO":
+			if len(parts) < 2 {
+				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
+				continue
+			}
 			conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len(parts[1]), parts[1])))
 		case "SET":
+			if len(parts) < 3 {
+				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
+				continue
+			}
 			handleSet(conn, db, parts)
 		case "GET":
+			if len(parts) < 2 {
+				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
+				continue
+			}
 			handleGet(conn, db, parts)
+		case "RPUSH":
+			if len(parts) < 3 {
+				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
+				continue
+			}
+			handleRPush(conn, db, parts)
 		}
 	}
 
 }
 
 func handleSet(conn net.Conn, db *store.DB, parts []string) {
-	if len(parts) < 3 {
-		conn.Write([]byte("-ERR wrong number of arguments\r\n"))
-	}
 	key := parts[1]
 	val := parts[2]
 	var expiry time.Time
@@ -73,4 +90,9 @@ func handleGet(conn net.Conn, db *store.DB, parts []string) {
 	} else {
 		conn.Write([]byte("$-1\r\n"))
 	}
+}
+
+func handleRPush(conn net.Conn, db *store.DB, parts []string) {
+	db.RPush(parts[1], []string{parts[2]})
+	conn.Write([]byte(fmt.Sprintf(":%d\r\n", db.LLen())))
 }

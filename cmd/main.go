@@ -22,7 +22,7 @@ func main() {
 	fmt.Println("Redis Go Server started on :6379")
 
 	for {
-		conn, err := l.Accept() // block code until a client connects
+		conn, err := l.Accept()
 		if err != nil {
 			fmt.Println("Error accepting connection:", err)
 			continue
