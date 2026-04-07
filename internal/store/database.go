@@ -99,3 +99,18 @@ func (db *DB) LRange(key string, start, stop int) []string {
 	}
 	return list[start : stop+1]
 }
+func (db *DB) LPush(key string, value string) int {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	db.lists[key] = append([]string{value}, db.lists[key]...)
+	return len(db.lists[key])
+}
+
+func (db *DB) LPushMany(key string, values []string) int {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	newList := append(values, db.lists[key]...)
+	db.lists[key] = newList
+	return len(db.lists[key])
+
+}

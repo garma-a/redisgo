@@ -63,6 +63,12 @@ func HandleClient(conn net.Conn, db *store.DB) {
 				continue
 			}
 			handleLRange(conn, db, parts)
+		case "LPUSH":
+			if len(parts) < 3 {
+				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
+				continue
+			}
+			handleLPush(conn, db, parts)
 		}
 	}
 

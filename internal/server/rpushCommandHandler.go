@@ -27,3 +27,12 @@ func handleLRange(conn net.Conn, db *store.DB, parts []string) {
 		conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len(item), item)))
 	}
 }
+func handleLPush(conn net.Conn, db *store.DB, parts []string) {
+	var length int
+	if len(parts) > 3 {
+		length = db.LPushMany(parts[1], parts[2:])
+	} else {
+		length = db.LPush(parts[1], parts[2])
+	}
+	conn.Write([]byte(fmt.Sprintf(":%d\r\n", length)))
+}
