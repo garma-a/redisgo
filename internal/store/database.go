@@ -13,13 +13,13 @@ type Value struct {
 type DB struct {
 	mu    sync.RWMutex
 	data  map[string]Value
-	lists map[string][]string
+	lists []string
 }
 
 func New() *DB {
 	return &DB{
 		data:  make(map[string]Value),
-		lists: make(map[string][]string),
+		lists: make([]string, 0),
 	}
 }
 
@@ -57,9 +57,9 @@ func (db *DB) GetWithTTL(key string) (string, bool) {
 	return "", false
 }
 
-func (db *DB) RPush(key string, values []string) {
+func (db *DB) RPush(key string, values string) {
 	db.mu.Lock()
-	db.lists[key] = append(db.lists[key], values...)
+	db.lists = append(db.lists, values)
 	db.mu.Unlock()
 }
 

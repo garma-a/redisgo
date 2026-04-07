@@ -93,6 +93,6 @@ func handleGet(conn net.Conn, db *store.DB, parts []string) {
 }
 
 func handleRPush(conn net.Conn, db *store.DB, parts []string) {
-	db.RPush(parts[1], []string{parts[2]})
+	db.RPush(parts[1], parts[2])
 	conn.Write([]byte(fmt.Sprintf(":%d\r\n", db.LLen())))
 }
