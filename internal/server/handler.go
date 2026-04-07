@@ -5,7 +5,6 @@ import (
 	"io"
 	"net"
 	"strings"
-	"weak"
 
 	"github.com/GARMA-A/redisgo/internal/resp"
 	"github.com/GARMA-A/redisgo/internal/store"
