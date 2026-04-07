@@ -42,11 +42,23 @@ func handleLLEN(conn net.Conn, db *store.DB, parts []string) {
 }
 
 func handleLPop(conn net.Conn, db *store.DB, parts []string) {
-	val := db.LPop(parts[1])
-	if val != "" {
-		conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len(val), val)))
+	if len(parts) > 2 {
+		handleLPopMany(conn, db, parts)
 	} else {
-		conn.Write([]byte("$-1\r\n"))
+		val := db.LPop(parts[1])
+		if val != "" {
+			conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len(val), val)))
+		} else {
+			conn.Write([]byte("$-1\r\n"))
+		}
 	}
 
+}
+func handleLPopMany(conn net.Conn, db *store.DB, parts []string) {
+	count, _ := strconv.Atoi(parts[2])
+	values := db.LPopMany(parts[1], count)
+	conn.Write([]byte(fmt.Sprintf("*%d\r\n", len(values))))
+	for _, val := range values {
+		conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len(val), val)))
+	}
 }

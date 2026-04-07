@@ -135,3 +135,16 @@ func (db *DB) LLEN(key string) int {
 		return 0
 	}
 }
+func (db *DB) LPopMany(key string, count int) []string {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	if lst, exists := db.lists[key]; exists && len(lst) > 0 {
+		if count > len(lst) {
+			count = len(lst)
+		}
+		vals := lst[:count]
+		db.lists[key] = db.lists[key][count:]
+		return vals
+	}
+	return []string{}
+}

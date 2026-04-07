@@ -2,11 +2,13 @@ package server
 
 import (
 	"fmt"
-	"github.com/GARMA-A/redisgo/internal/resp"
-	"github.com/GARMA-A/redisgo/internal/store"
 	"io"
 	"net"
 	"strings"
+	"weak"
+
+	"github.com/GARMA-A/redisgo/internal/resp"
+	"github.com/GARMA-A/redisgo/internal/store"
 )
 
 func HandleClient(conn net.Conn, db *store.DB) {
