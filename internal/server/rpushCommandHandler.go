@@ -37,6 +37,6 @@ func handleLPush(conn net.Conn, db *store.DB, parts []string) {
 	conn.Write([]byte(fmt.Sprintf(":%d\r\n", length)))
 }
 
-func handleLLEN(conn net.Conn, db *store.DB, parts []string) int {
-	return db.LLEN(parts[1])
+func handleLLEN(conn net.Conn, db *store.DB, parts []string) {
+	conn.Write([]byte(fmt.Sprintf(":%d\r\n", db.LLEN(parts[1]))))
 }
