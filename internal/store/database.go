@@ -109,8 +109,10 @@ func (db *DB) LPush(key string, value string) int {
 func (db *DB) LPushMany(key string, values []string) int {
 	db.mu.Lock()
 	defer db.mu.Unlock()
-	newList := append(values, db.lists[key]...)
-	db.lists[key] = newList
+	newList := make([]string, 0, len(values))
+	for _, v := range values {
+		newList = append(newList, v)
+	}
+	db.lists[key] = append(newList, db.lists[key]...)
 	return len(db.lists[key])
-
 }
