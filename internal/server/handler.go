@@ -6,9 +6,7 @@ import (
 	"github.com/GARMA-A/redisgo/internal/store"
 	"io"
 	"net"
-	"strconv"
 	"strings"
-	"time"
 )
 
 func HandleClient(conn net.Conn, db *store.DB) {
@@ -62,37 +60,4 @@ func HandleClient(conn net.Conn, db *store.DB) {
 		}
 	}
 
-}
-
-func handleSet(conn net.Conn, db *store.DB, parts []string) {
-	key := parts[1]
-	val := parts[2]
-	var expiry time.Time
-
-	if len(parts) >= 5 {
-		option := strings.ToUpper(parts[3])
-		expiryValue, _ := strconv.Atoi(parts[4])
-
-		if option == "EX" {
-			expiry = time.Now().Add(time.Duration(expiryValue) * time.Second)
-		} else if option == "PX" {
-			expiry = time.Now().Add(time.Duration(expiryValue) * time.Millisecond)
-		}
-	}
-	db.Set(key, val, expiry)
-	conn.Write([]byte("+OK\r\n"))
-}
-
-func handleGet(conn net.Conn, db *store.DB, parts []string) {
-	val, exists := db.GetWithTTL(parts[1])
-	if exists {
-		conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len(val), val)))
-	} else {
-		conn.Write([]byte("$-1\r\n"))
-	}
-}
-
-func handleRPush(conn net.Conn, db *store.DB, parts []string) {
-	db.RPush(parts[1], parts[2])
-	conn.Write([]byte(fmt.Sprintf(":%d\r\n", db.LLen())))
 }

@@ -63,6 +63,13 @@ func (db *DB) RPush(key string, values string) {
 	db.mu.Unlock()
 }
 
+func (db *DB) RPushMany(key string, values []string) []string {
+	db.mu.Lock()
+	db.lists = append(db.lists, values...)
+	db.mu.Unlock()
+	return db.lists
+}
+
 func (db *DB) LLen() int {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
