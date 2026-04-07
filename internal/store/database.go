@@ -13,13 +13,13 @@ type Value struct {
 type DB struct {
 	mu    sync.RWMutex
 	data  map[string]Value
-	lists []string
+	lists map[string][]string
 }
 
 func New() *DB {
 	return &DB{
 		data:  make(map[string]Value),
-		lists: make([]string, 0),
+		lists: make(map[string][]string),
 	}
 }
 
@@ -57,44 +57,45 @@ func (db *DB) GetWithTTL(key string) (string, bool) {
 	return "", false
 }
 
-func (db *DB) RPush(key string, values string) {
+func (db *DB) RPush(key string, value string) int {
 	db.mu.Lock()
-	db.lists = append(db.lists, values)
-	db.mu.Unlock()
+	defer db.mu.Unlock()
+	db.lists[key] = append(db.lists[key], value)
+	return len(db.lists[key])
 }
 
-func (db *DB) RPushMany(key string, values []string) []string {
+func (db *DB) RPushMany(key string, values []string) int {
 	db.mu.Lock()
-	db.lists = append(db.lists, values...)
-	db.mu.Unlock()
-	return db.lists
+	defer db.mu.Unlock()
+	db.lists[key] = append(db.lists[key], values...)
+	return len(db.lists[key])
 }
-func (db *DB) LRange(start, stop int) []string {
+
+func (db *DB) LRange(key string, start, stop int) []string {
 	db.mu.RLock()
-	defer db.mu.RUnlock()
+	list, exists := db.lists[key]
+	db.mu.RUnlock()
+	if !exists {
+		return []string{}
+	}
+
 	if start < 0 {
-		start = len(db.lists) + start
+		start = len(list) + start
 	}
 	if start < 0 {
 		start = 0
 	}
 	if stop < 0 {
-		stop = len(db.lists) + stop
+		stop = len(list) + stop
 	}
 	if stop < 0 {
 		stop = 0
 	}
-	if stop >= len(db.lists) {
-		stop = len(db.lists) - 1
+	if stop >= len(list) {
+		stop = len(list) - 1
 	}
 	if start > stop {
 		return []string{}
 	}
-	return db.lists[start : stop+1]
-}
-
-func (db *DB) LLen() int {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
-	return len(db.lists)
+	return list[start : stop+1]
 }
