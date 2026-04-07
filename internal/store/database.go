@@ -108,9 +108,15 @@ func (db *DB) LPush(key string, value string) int {
 }
 
 func (db *DB) LPushMany(key string, values []string) int {
+	slices.Reverse(values)
 	db.mu.Lock()
 	defer db.mu.Unlock()
-	slices.Reverse(values)
 	db.lists[key] = append(values, db.lists[key]...)
+	return len(db.lists[key])
+}
+
+func (db *DB) LLEN(key string) int {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
 	return len(db.lists[key])
 }
