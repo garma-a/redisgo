@@ -2,7 +2,6 @@ package store
 
 import (
 	"container/list"
-	"slices"
 	"sync"
 	"time"
 )
@@ -167,12 +166,12 @@ func (db *DB) LPush(key string, value string) int {
 }
 
 func (db *DB) LPushMany(key string, values []string) int {
-	slices.Reverse(values)
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	lst := db.getOrCreateList(key)
 	currentLen := len(lst.Values)
-	for _, value := range values {
+	for i := len(values) - 1; i >= 0; i-- {
+		value := values[i]
 		if lst.queue != nil && lst.queue.Len() > 0 {
 			waiter := lst.queue.Front()
 			lst.queue.Remove(waiter)
