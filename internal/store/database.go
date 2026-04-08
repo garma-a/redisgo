@@ -170,8 +170,7 @@ func (db *DB) LPushMany(key string, values []string) int {
 	defer db.mu.Unlock()
 	lst := db.getOrCreateList(key)
 	currentLen := len(lst.Values)
-	for i := len(values) - 1; i >= 0; i-- {
-		value := values[i]
+	for _, value := range values {
 		if lst.queue != nil && lst.queue.Len() > 0 {
 			waiter := lst.queue.Front()
 			lst.queue.Remove(waiter)
