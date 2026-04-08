@@ -87,12 +87,13 @@ func (db *DB) RPush(key string, value string) int {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	lst := db.getOrCreateList(key)
+	currentLen := len(lst.Values)
 	if lst.queue != nil && lst.queue.Len() > 0 {
 		waiter := lst.queue.Front()
 		lst.queue.Remove(waiter)
 		if ch, ok := waiter.Value.(chan string); ok {
 			ch <- value
-			return len(lst.Values)
+			return currentLen + 1
 		}
 	}
 	lst.Values = append(lst.Values, value)
@@ -103,6 +104,7 @@ func (db *DB) RPushMany(key string, values []string) int {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	lst := db.getOrCreateList(key)
+	currentLen := len(lst.Values)
 	for _, value := range values {
 		if lst.queue != nil && lst.queue.Len() > 0 {
 			waiter := lst.queue.Front()
@@ -114,7 +116,7 @@ func (db *DB) RPushMany(key string, values []string) int {
 		}
 		lst.Values = append(lst.Values, value)
 	}
-	return len(lst.Values)
+	return currentLen + len(values)
 }
 
 func (db *DB) LRange(key string, start, stop int) []string {
@@ -151,12 +153,13 @@ func (db *DB) LPush(key string, value string) int {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	lst := db.getOrCreateList(key)
+	currentLen := len(lst.Values)
 	if lst.queue != nil && lst.queue.Len() > 0 {
 		waiter := lst.queue.Front()
 		lst.queue.Remove(waiter)
 		if ch, ok := waiter.Value.(chan string); ok {
 			ch <- value
-			return len(lst.Values)
+			return currentLen + 1
 		}
 	}
 	lst.Values = append([]string{value}, lst.Values...)
@@ -168,6 +171,7 @@ func (db *DB) LPushMany(key string, values []string) int {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	lst := db.getOrCreateList(key)
+	currentLen := len(lst.Values)
 	for _, value := range values {
 		if lst.queue != nil && lst.queue.Len() > 0 {
 			waiter := lst.queue.Front()
@@ -179,7 +183,7 @@ func (db *DB) LPushMany(key string, values []string) int {
 		}
 		lst.Values = append([]string{value}, lst.Values...)
 	}
-	return len(lst.Values)
+	return currentLen + len(values)
 }
 
 func (db *DB) LPop(key string) string {
