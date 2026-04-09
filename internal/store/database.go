@@ -1,39 +1,34 @@
 package store
 
 import (
-	"container/list"
 	"sync"
 	"time"
 )
 
-type Value struct {
+type value struct {
 	Data      string
 	ExpiresAt time.Time
 }
 
-type List struct {
-	Values []string
-	queue  *list.List
+type list struct {
+	values  []string
+	waiters []chan string
 }
 
 type DB struct {
 	mu    sync.RWMutex
-	data  map[string]Value
-	lists map[string]*List
+	data  map[string]value
+	lists map[string]*list
 }
 
-func newList() *List {
-	return &List{
-		Values: []string{},
-		queue:  list.New(),
+func newList() *list {
+	return &list{
+		values: []string{},
 	}
 }
 
-func (db *DB) getOrCreateList(key string) *List {
+func (db *DB) getOrCreateList(key string) *list {
 	if lst, exists := db.lists[key]; exists && lst != nil {
-		if lst.queue == nil {
-			lst.queue = list.New()
-		}
 		return lst
 	}
 	newLst := newList()
@@ -41,17 +36,28 @@ func (db *DB) getOrCreateList(key string) *List {
 	return newLst
 }
 
+func (lst *list) notifyWaiter(value string) bool {
+	if len(lst.waiters) == 0 {
+		return false
+	}
+	ch := lst.waiters[0]
+	lst.waiters[0] = nil
+	lst.waiters = lst.waiters[1:]
+	ch <- value
+	return true
+}
+
 func New() *DB {
 	return &DB{
-		data:  make(map[string]Value),
-		lists: make(map[string]*List),
+		data:  make(map[string]value),
+		lists: make(map[string]*list),
 	}
 }
 
-func (db *DB) Set(key, value string, expiry time.Time) {
+func (db *DB) Set(key, val string, expiry time.Time) {
 	db.mu.Lock()
-	db.data[key] = Value{
-		Data:      value,
+	db.data[key] = value{
+		Data:      val,
 		ExpiresAt: expiry,
 	}
 	db.mu.Unlock()
@@ -86,34 +92,24 @@ func (db *DB) RPush(key string, value string) int {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	lst := db.getOrCreateList(key)
-	currentLen := len(lst.Values)
-	if lst.queue != nil && lst.queue.Len() > 0 {
-		waiter := lst.queue.Front()
-		lst.queue.Remove(waiter)
-		if ch, ok := waiter.Value.(chan string); ok {
-			ch <- value
-			return currentLen + 1
-		}
+	currentLen := len(lst.values)
+	if lst.notifyWaiter(value) {
+		return currentLen + 1
 	}
-	lst.Values = append(lst.Values, value)
-	return len(lst.Values)
+	lst.values = append(lst.values, value)
+	return len(lst.values)
 }
 
 func (db *DB) RPushMany(key string, values []string) int {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	lst := db.getOrCreateList(key)
-	currentLen := len(lst.Values)
+	currentLen := len(lst.values)
 	for _, value := range values {
-		if lst.queue != nil && lst.queue.Len() > 0 {
-			waiter := lst.queue.Front()
-			lst.queue.Remove(waiter)
-			if ch, ok := waiter.Value.(chan string); ok {
-				ch <- value
-				continue
-			}
+		if lst.notifyWaiter(value) {
+			continue
 		}
-		lst.Values = append(lst.Values, value)
+		lst.values = append(lst.values, value)
 	}
 	return currentLen + len(values)
 }
@@ -122,11 +118,11 @@ func (db *DB) LRange(key string, start, stop int) []string {
 	db.mu.RLock()
 	lst := db.lists[key]
 	db.mu.RUnlock()
-	if lst == nil || len(lst.Values) == 0 {
+	if lst == nil || len(lst.values) == 0 {
 		return []string{}
 	}
 
-	list := lst.Values
+	list := lst.values
 
 	if start < 0 {
 		start = len(list) + start
@@ -152,34 +148,24 @@ func (db *DB) LPush(key string, value string) int {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	lst := db.getOrCreateList(key)
-	currentLen := len(lst.Values)
-	if lst.queue != nil && lst.queue.Len() > 0 {
-		waiter := lst.queue.Front()
-		lst.queue.Remove(waiter)
-		if ch, ok := waiter.Value.(chan string); ok {
-			ch <- value
-			return currentLen + 1
-		}
+	currentLen := len(lst.values)
+	if lst.notifyWaiter(value) {
+		return currentLen + 1
 	}
-	lst.Values = append([]string{value}, lst.Values...)
-	return len(lst.Values)
+	lst.values = append([]string{value}, lst.values...)
+	return len(lst.values)
 }
 
 func (db *DB) LPushMany(key string, values []string) int {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	lst := db.getOrCreateList(key)
-	currentLen := len(lst.Values)
+	currentLen := len(lst.values)
 	for _, value := range values {
-		if lst.queue != nil && lst.queue.Len() > 0 {
-			waiter := lst.queue.Front()
-			lst.queue.Remove(waiter)
-			if ch, ok := waiter.Value.(chan string); ok {
-				ch <- value
-				continue
-			}
+		if lst.notifyWaiter(value) {
+			continue
 		}
-		lst.Values = append([]string{value}, lst.Values...)
+		lst.values = append([]string{value}, lst.values...)
 	}
 	return currentLen + len(values)
 }
@@ -188,9 +174,9 @@ func (db *DB) LPop(key string) string {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	val := ""
-	if lst, exists := db.lists[key]; exists && lst != nil && len(lst.Values) > 0 {
-		val = lst.Values[0]
-		lst.Values = lst.Values[1:]
+	if lst, exists := db.lists[key]; exists && lst != nil && len(lst.values) > 0 {
+		val = lst.values[0]
+		lst.values = lst.values[1:]
 	}
 	return val
 }
@@ -198,9 +184,9 @@ func (db *DB) LPop(key string) string {
 func (db *DB) LPopWithOK(key string) (string, bool) {
 	db.mu.Lock()
 	defer db.mu.Unlock()
-	if lst, exists := db.lists[key]; exists && lst != nil && len(lst.Values) > 0 {
-		val := lst.Values[0]
-		lst.Values = lst.Values[1:]
+	if lst, exists := db.lists[key]; exists && lst != nil && len(lst.values) > 0 {
+		val := lst.values[0]
+		lst.values = lst.values[1:]
 		return val, true
 	}
 	return "", false
@@ -210,15 +196,12 @@ func (db *DB) RegisterBLPop(key string, ch chan string) (string, bool) {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	lst := db.getOrCreateList(key)
-	if len(lst.Values) > 0 {
-		val := lst.Values[0]
-		lst.Values = lst.Values[1:]
+	if len(lst.values) > 0 {
+		val := lst.values[0]
+		lst.values = lst.values[1:]
 		return val, true
 	}
-	if lst.queue == nil {
-		lst.queue = list.New()
-	}
-	lst.queue.PushBack(ch)
+	lst.waiters = append(lst.waiters, ch)
 	return "", false
 }
 
@@ -226,7 +209,7 @@ func (db *DB) LLEN(key string) int {
 	db.mu.RLock()
 	defer db.mu.RUnlock()
 	if lst, exists := db.lists[key]; exists && lst != nil {
-		return len(lst.Values)
+		return len(lst.values)
 	} else {
 		return 0
 	}
@@ -234,12 +217,12 @@ func (db *DB) LLEN(key string) int {
 func (db *DB) LPopMany(key string, count int) []string {
 	db.mu.Lock()
 	defer db.mu.Unlock()
-	if lst, exists := db.lists[key]; exists && lst != nil && len(lst.Values) > 0 {
-		if count > len(lst.Values) {
-			count = len(lst.Values)
+	if lst, exists := db.lists[key]; exists && lst != nil && len(lst.values) > 0 {
+		if count > len(lst.values) {
+			count = len(lst.values)
 		}
-		vals := lst.Values[:count]
-		lst.Values = lst.Values[count:]
+		vals := lst.values[:count]
+		lst.values = lst.values[count:]
 		return vals
 	}
 	return []string{}

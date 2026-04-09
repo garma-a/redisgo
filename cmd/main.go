@@ -18,7 +18,6 @@ func main() {
 		os.Exit(1)
 	}
 	defer l.Close()
-
 	fmt.Println("Redis Go Server started on :6379")
 
 	for {
