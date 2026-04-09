@@ -65,7 +65,7 @@ func handleLPopMany(conn net.Conn, db *store.DB, parts []string) {
 
 func handleBLPOP(conn net.Conn, db *store.DB, parts []string) {
 	key := parts[1]
-	ch := make(chan string, 1)
+	ch := make(chan string)
 	if val, ok := db.RegisterBLPop(key, ch); ok {
 		conn.Write([]byte(fmt.Sprintf("*2\r\n$%d\r\n%s\r\n$%d\r\n%s\r\n", len(key), key, len(val), val)))
 		return

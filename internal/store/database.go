@@ -36,7 +36,7 @@ func (db *DB) getOrCreateList(key string) *list {
 	return newLst
 }
 
-func (lst *list) notifyWaiter(value string) bool {
+func (lst *list) isSendToWaiter(value string) bool {
 	if len(lst.waiters) == 0 {
 		return false
 	}
@@ -93,7 +93,7 @@ func (db *DB) RPush(key string, value string) int {
 	defer db.mu.Unlock()
 	lst := db.getOrCreateList(key)
 	currentLen := len(lst.values)
-	if lst.notifyWaiter(value) {
+	if lst.isSendToWaiter(value) {
 		return currentLen + 1
 	}
 	lst.values = append(lst.values, value)
@@ -106,7 +106,7 @@ func (db *DB) RPushMany(key string, values []string) int {
 	lst := db.getOrCreateList(key)
 	currentLen := len(lst.values)
 	for _, value := range values {
-		if lst.notifyWaiter(value) {
+		if lst.isSendToWaiter(value) {
 			continue
 		}
 		lst.values = append(lst.values, value)
@@ -149,7 +149,7 @@ func (db *DB) LPush(key string, value string) int {
 	defer db.mu.Unlock()
 	lst := db.getOrCreateList(key)
 	currentLen := len(lst.values)
-	if lst.notifyWaiter(value) {
+	if lst.isSendToWaiter(value) {
 		return currentLen + 1
 	}
 	lst.values = append([]string{value}, lst.values...)
@@ -162,10 +162,9 @@ func (db *DB) LPushMany(key string, values []string) int {
 	lst := db.getOrCreateList(key)
 	currentLen := len(lst.values)
 	for _, value := range values {
-		if lst.notifyWaiter(value) {
-			continue
+		if !lst.isSendToWaiter(value) {
+			lst.values = append([]string{value}, lst.values...)
 		}
-		lst.values = append([]string{value}, lst.values...)
 	}
 	return currentLen + len(values)
 }
@@ -196,13 +195,13 @@ func (db *DB) RegisterBLPop(key string, ch chan string) (string, bool) {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	lst := db.getOrCreateList(key)
-	if len(lst.values) > 0 {
-		val := lst.values[0]
-		lst.values = lst.values[1:]
-		return val, true
+	if len(lst.values) == 0 {
+		lst.waiters = append(lst.waiters, ch)
+		return "", false
 	}
-	lst.waiters = append(lst.waiters, ch)
-	return "", false
+	val := lst.values[0]
+	lst.values = lst.values[1:]
+	return val, true
 }
 
 func (db *DB) LLEN(key string) int {
