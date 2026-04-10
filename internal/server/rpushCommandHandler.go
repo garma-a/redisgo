@@ -92,3 +92,9 @@ func handleBLPOP(conn net.Conn, db *store.DB, parts []string) {
 		conn.Write([]byte(fmt.Sprintf("*2\r\n$%d\r\n%s\r\n$%d\r\n%s\r\n", len(key), key, len(val), val)))
 	}
 }
+
+func handleType(conn net.Conn, db *store.DB, parts []string) {
+	key := parts[1]
+	myType := db.GetType(key)
+	conn.Write([]byte(fmt.Sprintf("+%s\r\n", myType)))
+}

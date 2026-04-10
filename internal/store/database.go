@@ -248,3 +248,14 @@ func (db *DB) LPopWaiter(key string) {
 	lst := db.getOrCreateList(key)
 	lst.waiters = lst.waiters[1:]
 }
+
+func (db *DB) GetType(key string) string {
+	if _, ok := db.lists[key]; ok {
+		return "list"
+	} else if _, ok := db.data[key]; ok {
+		return "string"
+	} else {
+		return "none"
+	}
+
+}
