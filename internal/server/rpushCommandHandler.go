@@ -86,7 +86,7 @@ func handleBLPOP(conn net.Conn, db *store.DB, parts []string) {
 			conn.Write([]byte(fmt.Sprintf("*2\r\n$%d\r\n%s\r\n$%d\r\n%s\r\n", len(key), key, len(val), val)))
 		case <-time.After(time.Duration(timeoutSec) * time.Second):
 			db.RemoveWaiter(key, ch)
-			conn.Write([]byte("$-1\r\n"))
+			conn.Write([]byte("*-1\r\n"))
 		}
 	} else {
 		// timeout 0 means block forever
