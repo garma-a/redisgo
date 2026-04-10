@@ -81,6 +81,7 @@ func handleBLPOP(conn net.Conn, db *store.DB, parts []string) {
 	// step is to check the time
 
 	if timeoutSec > 0 {
+		timeoutSec += 0.1
 		select {
 		case val := <-ch:
 			conn.Write([]byte(fmt.Sprintf("*2\r\n$%d\r\n%s\r\n$%d\r\n%s\r\n", len(key), key, len(val), val)))
