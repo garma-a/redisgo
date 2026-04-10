@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"time"
 
 	"github.com/GARMA-A/redisgo/internal/store"
 )
@@ -65,11 +66,31 @@ func handleLPopMany(conn net.Conn, db *store.DB, parts []string) {
 
 func handleBLPOP(conn net.Conn, db *store.DB, parts []string) {
 	key := parts[1]
+	timeoutSec, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil {
+		conn.Write([]byte("-ERR invalid timeout\r\n"))
+		return
+	}
+
 	ch := make(chan string)
-	if val, ok := db.AddWaiterOrRemoveValue(key, ch); ok {
+	if val, ok := db.BLPOPWithOk(key, ch); ok {
 		conn.Write([]byte(fmt.Sprintf("*2\r\n$%d\r\n%s\r\n$%d\r\n%s\r\n", len(key), key, len(val), val)))
 		return
 	}
-	val := <-ch
-	conn.Write([]byte(fmt.Sprintf("*2\r\n$%d\r\n%s\r\n$%d\r\n%s\r\n", len(key), key, len(val), val)))
+	// we here then there is waiter send already on this client so the next
+	// step is to check the time
+
+	if timeoutSec > 0 {
+		select {
+		case val := <-ch:
+			conn.Write([]byte(fmt.Sprintf("*2\r\n$%d\r\n%s\r\n$%d\r\n%s\r\n", len(key), key, len(val), val)))
+		case <-time.After(time.Duration(timeoutSec) * time.Second):
+			db.RemoveWaiter(key, ch)
+			conn.Write([]byte("$-1\r\n"))
+		}
+	} else {
+		// timeout 0 means block forever
+		val := <-ch
+		conn.Write([]byte(fmt.Sprintf("*2\r\n$%d\r\n%s\r\n$%d\r\n%s\r\n", len(key), key, len(val), val)))
+	}
 }

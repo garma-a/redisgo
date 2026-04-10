@@ -191,7 +191,7 @@ func (db *DB) LPopWithOK(key string) (string, bool) {
 	return "", false
 }
 
-func (db *DB) AddWaiterOrRemoveValue(key string, ch chan string) (string, bool) {
+func (db *DB) BLPOPWithOk(key string, ch chan string) (string, bool) {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	lst := db.getOrCreateList(key)
@@ -202,6 +202,21 @@ func (db *DB) AddWaiterOrRemoveValue(key string, ch chan string) (string, bool) 
 	val := lst.values[0]
 	lst.values = lst.values[1:]
 	return val, true
+}
+
+func (db *DB) RemoveWaiter(key string, ch chan string) {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	lst, exists := db.lists[key]
+	if !exists || lst == nil {
+		return
+	}
+	for i, waiter := range lst.waiters {
+		if waiter == ch {
+			lst.waiters = append(lst.waiters[:i], lst.waiters[i+1:]...)
+			break
+		}
+	}
 }
 
 func (db *DB) LLEN(key string) int {
@@ -225,4 +240,11 @@ func (db *DB) LPopMany(key string, count int) []string {
 		return vals
 	}
 	return []string{}
+}
+
+func (db *DB) LPopWaiter(key string) {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	lst := db.getOrCreateList(key)
+	lst.waiters = lst.waiters[1:]
 }
