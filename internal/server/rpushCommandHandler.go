@@ -66,7 +66,7 @@ func handleLPopMany(conn net.Conn, db *store.DB, parts []string) {
 
 func handleBLPOP(conn net.Conn, db *store.DB, parts []string) {
 	key := parts[1]
-	timeoutSec, err := strconv.ParseFloat(parts[2], 10)
+	timeoutSec, err := strconv.ParseFloat(parts[2], 64)
 	if err != nil {
 		conn.Write([]byte("-ERR invalid timeout\r\n"))
 		return
@@ -77,15 +77,13 @@ func handleBLPOP(conn net.Conn, db *store.DB, parts []string) {
 		conn.Write([]byte(fmt.Sprintf("*2\r\n$%d\r\n%s\r\n$%d\r\n%s\r\n", len(key), key, len(val), val)))
 		return
 	}
-	// we here then there is waiter send already on this client so the next
-	// step is to check the time
 
 	if timeoutSec > 0 {
-		timeoutSec += 0.1
+		timeoutSec += 0.50
 		select {
 		case val := <-ch:
 			conn.Write([]byte(fmt.Sprintf("*2\r\n$%d\r\n%s\r\n$%d\r\n%s\r\n", len(key), key, len(val), val)))
-		case <-time.After(time.Duration(timeoutSec) * time.Second):
+		case <-time.After(time.Duration(timeoutSec * float64(time.Second))):
 			db.RemoveWaiter(key, ch)
 			conn.Write([]byte("*-1\r\n"))
 		}
