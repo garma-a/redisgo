@@ -191,7 +191,7 @@ func (db *DB) LPopWithOK(key string) (string, bool) {
 	return "", false
 }
 
-func (db *DB) RegisterBLPop(key string, ch chan string) (string, bool) {
+func (db *DB) AddWaiterOrRemoveValue(key string, ch chan string) (string, bool) {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	lst := db.getOrCreateList(key)
