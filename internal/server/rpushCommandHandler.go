@@ -66,7 +66,7 @@ func handleLPopMany(conn net.Conn, db *store.DB, parts []string) {
 
 func handleBLPOP(conn net.Conn, db *store.DB, parts []string) {
 	key := parts[1]
-	timeoutSec, err := strconv.ParseInt(parts[2], 10, 64)
+	timeoutSec, err := strconv.ParseFloat(parts[2], 10)
 	if err != nil {
 		conn.Write([]byte("-ERR invalid timeout\r\n"))
 		return
