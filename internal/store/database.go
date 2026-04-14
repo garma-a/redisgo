@@ -1,6 +1,9 @@
 package store
 
 import (
+	"errors"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -21,8 +24,10 @@ type streamField struct {
 }
 
 type streamEntry struct {
-	ID     string
-	Fields []streamField
+	ID           string
+	Milliseconds uint64
+	Sequence     uint64
+	Fields       []streamField
 }
 
 type stream struct {
@@ -35,6 +40,12 @@ type DB struct {
 	lists   map[string]*list
 	streams map[string]*stream
 }
+
+var (
+	ErrXAddInvalidID  = errors.New("invalid stream id")
+	ErrXAddIDTooSmall = errors.New("xadd id is equal or smaller than stream top")
+	ErrXAddIDZero     = errors.New("xadd id must be greater than 0-0")
+)
 
 func newList() *list {
 	return &list{
@@ -145,9 +156,50 @@ func (db *DB) RPushMany(key string, values []string) int {
 	return currentLen + len(values)
 }
 
-func (db *DB) XAdd(key, id string, fields []string) string {
+func parseExplicitStreamID(id string) (uint64, uint64, error) {
+	parts := strings.Split(id, "-")
+	if len(parts) != 2 {
+		return 0, 0, ErrXAddInvalidID
+	}
+	milliseconds, err := strconv.ParseUint(parts[0], 10, 64)
+	if err != nil {
+		return 0, 0, ErrXAddInvalidID
+	}
+	sequence, err := strconv.ParseUint(parts[1], 10, 64)
+	if err != nil {
+		return 0, 0, ErrXAddInvalidID
+	}
+	return milliseconds, sequence, nil
+}
+
+func isIDStrictlyGreater(milliseconds, sequence, lastMilliseconds, lastSequence uint64) bool {
+	if milliseconds > lastMilliseconds {
+		return true
+	}
+	if milliseconds < lastMilliseconds {
+		return false
+	}
+	return sequence > lastSequence
+}
+
+func (db *DB) XAdd(key, id string, fields []string) (string, error) {
 	db.mu.Lock()
 	defer db.mu.Unlock()
+	milliseconds, sequence, err := parseExplicitStreamID(id)
+	if err != nil {
+		return "", err
+	}
+
+	if milliseconds == 0 && sequence == 0 {
+		return "", ErrXAddIDZero
+	}
+
+	if stm, exists := db.streams[key]; exists && stm != nil && len(stm.entries) > 0 {
+		last := stm.entries[len(stm.entries)-1]
+		if !isIDStrictlyGreater(milliseconds, sequence, last.Milliseconds, last.Sequence) {
+			return "", ErrXAddIDTooSmall
+		}
+	}
 
 	stm := db.getOrCreateStream(key)
 	entryFields := make([]streamField, 0, len(fields)/2)
@@ -159,11 +211,13 @@ func (db *DB) XAdd(key, id string, fields []string) string {
 	}
 
 	stm.entries = append(stm.entries, streamEntry{
-		ID:     id,
-		Fields: entryFields,
+		ID:           id,
+		Milliseconds: milliseconds,
+		Sequence:     sequence,
+		Fields:       entryFields,
 	})
 
-	return id
+	return id, nil
 }
 
 func (db *DB) LRange(key string, start, stop int) []string {
