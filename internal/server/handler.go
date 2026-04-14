@@ -88,6 +88,12 @@ func HandleClient(conn net.Conn, db *store.DB) {
 				continue
 			}
 			handleBLPOP(conn, db, parts)
+		case "XADD":
+			if len(parts) < 5 || (len(parts)-3)%2 != 0 {
+				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
+				continue
+			}
+			handleXAdd(conn, db, parts)
 
 		case "TYPE":
 			if len(parts) < 2 {

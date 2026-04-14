@@ -15,10 +15,25 @@ type list struct {
 	waiters []chan string
 }
 
+type streamField struct {
+	Name  string
+	Value string
+}
+
+type streamEntry struct {
+	ID     string
+	Fields []streamField
+}
+
+type stream struct {
+	entries []streamEntry
+}
+
 type DB struct {
-	mu    sync.RWMutex
-	data  map[string]value
-	lists map[string]*list
+	mu      sync.RWMutex
+	data    map[string]value
+	lists   map[string]*list
+	streams map[string]*stream
 }
 
 func newList() *list {
@@ -36,6 +51,21 @@ func (db *DB) getOrCreateList(key string) *list {
 	return newLst
 }
 
+func newStream() *stream {
+	return &stream{
+		entries: []streamEntry{},
+	}
+}
+
+func (db *DB) getOrCreateStream(key string) *stream {
+	if stm, exists := db.streams[key]; exists && stm != nil {
+		return stm
+	}
+	newStm := newStream()
+	db.streams[key] = newStm
+	return newStm
+}
+
 func (lst *list) isSendToWaiter(value string) bool {
 	if len(lst.waiters) == 0 {
 		return false
@@ -49,8 +79,9 @@ func (lst *list) isSendToWaiter(value string) bool {
 
 func New() *DB {
 	return &DB{
-		data:  make(map[string]value),
-		lists: make(map[string]*list),
+		data:    make(map[string]value),
+		lists:   make(map[string]*list),
+		streams: make(map[string]*stream),
 	}
 }
 
@@ -112,6 +143,27 @@ func (db *DB) RPushMany(key string, values []string) int {
 		lst.values = append(lst.values, value)
 	}
 	return currentLen + len(values)
+}
+
+func (db *DB) XAdd(key, id string, fields []string) string {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	stm := db.getOrCreateStream(key)
+	entryFields := make([]streamField, 0, len(fields)/2)
+	for i := 0; i < len(fields); i += 2 {
+		entryFields = append(entryFields, streamField{
+			Name:  fields[i],
+			Value: fields[i+1],
+		})
+	}
+
+	stm.entries = append(stm.entries, streamEntry{
+		ID:     id,
+		Fields: entryFields,
+	})
+
+	return id
 }
 
 func (db *DB) LRange(key string, start, stop int) []string {
@@ -250,12 +302,16 @@ func (db *DB) LPopWaiter(key string) {
 }
 
 func (db *DB) GetType(key string) string {
-	if _, ok := db.lists[key]; ok {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+
+	if _, ok := db.streams[key]; ok {
+		return "stream"
+	} else if _, ok := db.lists[key]; ok {
 		return "list"
 	} else if _, ok := db.data[key]; ok {
 		return "string"
 	} else {
 		return "none"
 	}
-
 }
