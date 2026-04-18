@@ -161,6 +161,9 @@ func parseExplicitStreamID(id string) (uint64, uint64, error) {
 	if len(parts) != 2 {
 		return 0, 0, ErrXAddInvalidID
 	}
+	if id == "*" {
+		return uint64(time.Now().UnixMilli()), 0, nil
+	}
 	var milliseconds uint64
 	var err error
 	if parts[0] == "*" {
@@ -170,6 +173,9 @@ func parseExplicitStreamID(id string) (uint64, uint64, error) {
 		if err != nil {
 			return 0, 0, ErrXAddInvalidID
 		}
+	}
+	if parts[1] == "*" {
+		return milliseconds, 0, nil
 	}
 	sequence, err := strconv.ParseUint(parts[1], 10, 64)
 	if err != nil {
