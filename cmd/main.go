@@ -10,7 +10,6 @@ import (
 )
 
 func main() {
-	// we need to add some testing for the functions of this codebase
 	db := store.New()
 	l, err := net.Listen("tcp", "0.0.0.0:6379")
 	if err != nil {

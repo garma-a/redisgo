@@ -161,9 +161,15 @@ func parseExplicitStreamID(id string) (uint64, uint64, error) {
 	if len(parts) != 2 {
 		return 0, 0, ErrXAddInvalidID
 	}
-	milliseconds, err := strconv.ParseUint(parts[0], 10, 64)
-	if err != nil {
-		return 0, 0, ErrXAddInvalidID
+	var milliseconds uint64
+	var err error
+	if parts[0] == "*" {
+		milliseconds = uint64(time.Now().UnixMilli())
+	} else {
+		milliseconds, err = strconv.ParseUint(parts[0], 10, 64)
+		if err != nil {
+			return 0, 0, ErrXAddInvalidID
+		}
 	}
 	sequence, err := strconv.ParseUint(parts[1], 10, 64)
 	if err != nil {
@@ -183,8 +189,6 @@ func isIDStrictlyGreater(milliseconds, sequence, lastMilliseconds, lastSequence 
 }
 
 func (db *DB) XAdd(key, id string, fields []string) (string, error) {
-	db.mu.Lock()
-	defer db.mu.Unlock()
 	milliseconds, sequence, err := parseExplicitStreamID(id)
 	if err != nil {
 		return "", err
@@ -194,6 +198,8 @@ func (db *DB) XAdd(key, id string, fields []string) (string, error) {
 		return "", ErrXAddIDZero
 	}
 
+	db.mu.Lock()
+	defer db.mu.Unlock()
 	if stm, exists := db.streams[key]; exists && stm != nil && len(stm.entries) > 0 {
 		last := stm.entries[len(stm.entries)-1]
 		if !isIDStrictlyGreater(milliseconds, sequence, last.Milliseconds, last.Sequence) {
