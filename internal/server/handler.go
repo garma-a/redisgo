@@ -94,6 +94,12 @@ func HandleClient(conn net.Conn, db *store.DB) {
 				continue
 			}
 			handleXAdd(conn, db, parts)
+		case "XRANGE":
+			if len(parts) != 4 {
+				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
+				continue
+			}
+			handleXRange(conn, db, parts)
 
 		case "TYPE":
 			if len(parts) < 2 {

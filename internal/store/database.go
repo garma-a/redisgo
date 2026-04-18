@@ -22,6 +22,11 @@ type parsedStreamID struct {
 	seq  uint64
 }
 
+type XRangeResult struct {
+	ID     string
+	Fields []string
+}
+
 type value struct {
 	Data      string
 	ExpiresAt time.Time
@@ -252,6 +257,59 @@ func isIDStrictlyGreater(milliseconds, sequence, lastMilliseconds, lastSequence 
 	return sequence > lastSequence
 }
 
+func compareStreamID(aMilliseconds, aSequence, bMilliseconds, bSequence uint64) int {
+	if aMilliseconds < bMilliseconds {
+		return -1
+	}
+	if aMilliseconds > bMilliseconds {
+		return 1
+	}
+	if aSequence < bSequence {
+		return -1
+	}
+	if aSequence > bSequence {
+		return 1
+	}
+	return 0
+}
+
+func parseXRangeBound(id string, isStart bool) (uint64, uint64, error) {
+	if id == "-" {
+		return 0, 0, nil
+	}
+	if id == "+" {
+		max := ^uint64(0)
+		return max, max, nil
+	}
+
+	parts := strings.Split(id, "-")
+	if len(parts) == 1 {
+		milliseconds, err := strconv.ParseUint(parts[0], 10, 64)
+		if err != nil {
+			return 0, 0, ErrXAddInvalidID
+		}
+		if isStart {
+			return milliseconds, 0, nil
+		}
+		return milliseconds, ^uint64(0), nil
+	}
+
+	if len(parts) != 2 {
+		return 0, 0, ErrXAddInvalidID
+	}
+
+	milliseconds, err := strconv.ParseUint(parts[0], 10, 64)
+	if err != nil {
+		return 0, 0, ErrXAddInvalidID
+	}
+	sequence, err := strconv.ParseUint(parts[1], 10, 64)
+	if err != nil {
+		return 0, 0, ErrXAddInvalidID
+	}
+
+	return milliseconds, sequence, nil
+}
+
 func (db *DB) XAdd(key, id string, fields []string) (string, error) {
 	parsedID, err := parseExplicitStreamID(id)
 	if err != nil {
@@ -297,6 +355,47 @@ func (db *DB) XAdd(key, id string, fields []string) (string, error) {
 	})
 
 	return resolvedID, nil
+}
+
+func (db *DB) XRange(key, startID, endID string) ([]XRangeResult, error) {
+	startMilliseconds, startSequence, err := parseXRangeBound(startID, true)
+	if err != nil {
+		return nil, err
+	}
+	endMilliseconds, endSequence, err := parseXRangeBound(endID, false)
+	if err != nil {
+		return nil, err
+	}
+
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+
+	stm := db.streams[key]
+	if stm == nil || len(stm.entries) == 0 {
+		return []XRangeResult{}, nil
+	}
+
+	result := make([]XRangeResult, 0)
+	for _, entry := range stm.entries {
+		if compareStreamID(entry.Milliseconds, entry.Sequence, startMilliseconds, startSequence) < 0 {
+			continue
+		}
+		if compareStreamID(entry.Milliseconds, entry.Sequence, endMilliseconds, endSequence) > 0 {
+			continue
+		}
+
+		fields := make([]string, 0, len(entry.Fields)*2)
+		for _, field := range entry.Fields {
+			fields = append(fields, field.Name, field.Value)
+		}
+
+		result = append(result, XRangeResult{
+			ID:     entry.ID,
+			Fields: fields,
+		})
+	}
+
+	return result, nil
 }
 
 func (db *DB) LRange(key string, start, stop int) []string {
