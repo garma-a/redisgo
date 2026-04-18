@@ -8,6 +8,20 @@ import (
 	"time"
 )
 
+type streamIDKind int
+
+const (
+	idExplicit streamIDKind = iota
+	idAutoMsAndSeq
+	idExplicitMsAutoSeq
+)
+
+type parsedStreamID struct {
+	kind streamIDKind
+	ms   uint64
+	seq  uint64
+}
+
 type value struct {
 	Data      string
 	ExpiresAt time.Time
@@ -156,32 +170,76 @@ func (db *DB) RPushMany(key string, values []string) int {
 	return currentLen + len(values)
 }
 
-func parseExplicitStreamID(id string) (uint64, uint64, error) {
+func parseExplicitStreamID(id string) (parsedStreamID, error) {
+	if id == "*" {
+		return parsedStreamID{kind: idAutoMsAndSeq}, nil
+	}
+
 	parts := strings.Split(id, "-")
 	if len(parts) != 2 {
-		return 0, 0, ErrXAddInvalidID
+		return parsedStreamID{}, ErrXAddInvalidID
 	}
-	if id == "*" {
-		return uint64(time.Now().UnixMilli()), 0, nil
+
+	milliseconds, err := strconv.ParseUint(parts[0], 10, 64)
+	if err != nil {
+		return parsedStreamID{}, ErrXAddInvalidID
 	}
-	var milliseconds uint64
-	var err error
-	if parts[0] == "*" {
-		milliseconds = uint64(time.Now().UnixMilli())
-	} else {
-		milliseconds, err = strconv.ParseUint(parts[0], 10, 64)
-		if err != nil {
-			return 0, 0, ErrXAddInvalidID
-		}
-	}
+
 	if parts[1] == "*" {
-		return milliseconds, 0, nil
+		return parsedStreamID{kind: idExplicitMsAutoSeq, ms: milliseconds}, nil
 	}
+
 	sequence, err := strconv.ParseUint(parts[1], 10, 64)
 	if err != nil {
-		return 0, 0, ErrXAddInvalidID
+		return parsedStreamID{}, ErrXAddInvalidID
 	}
-	return milliseconds, sequence, nil
+
+	return parsedStreamID{kind: idExplicit, ms: milliseconds, seq: sequence}, nil
+}
+
+func resolveStreamID(parsedID parsedStreamID, hasLast bool, lastMilliseconds, lastSequence uint64) (uint64, uint64, error) {
+	switch parsedID.kind {
+	case idAutoMsAndSeq:
+		milliseconds := uint64(time.Now().UnixMilli())
+		if hasLast && milliseconds < lastMilliseconds {
+			milliseconds = lastMilliseconds
+		}
+		if hasLast && milliseconds == lastMilliseconds {
+			return milliseconds, lastSequence + 1, nil
+		}
+		if milliseconds == 0 {
+			return 0, 1, nil
+		}
+		return milliseconds, 0, nil
+
+	case idExplicitMsAutoSeq:
+		milliseconds := parsedID.ms
+		if hasLast {
+			if milliseconds < lastMilliseconds {
+				return 0, 0, ErrXAddIDTooSmall
+			}
+			if milliseconds == lastMilliseconds {
+				return milliseconds, lastSequence + 1, nil
+			}
+		}
+		if milliseconds == 0 {
+			return 0, 1, nil
+		}
+		return milliseconds, 0, nil
+
+	case idExplicit:
+		milliseconds := parsedID.ms
+		sequence := parsedID.seq
+		if milliseconds == 0 && sequence == 0 {
+			return 0, 0, ErrXAddIDZero
+		}
+		if hasLast && !isIDStrictlyGreater(milliseconds, sequence, lastMilliseconds, lastSequence) {
+			return 0, 0, ErrXAddIDTooSmall
+		}
+		return milliseconds, sequence, nil
+	}
+
+	return 0, 0, ErrXAddInvalidID
 }
 
 func isIDStrictlyGreater(milliseconds, sequence, lastMilliseconds, lastSequence uint64) bool {
@@ -195,23 +253,32 @@ func isIDStrictlyGreater(milliseconds, sequence, lastMilliseconds, lastSequence 
 }
 
 func (db *DB) XAdd(key, id string, fields []string) (string, error) {
-	milliseconds, sequence, err := parseExplicitStreamID(id)
+	parsedID, err := parseExplicitStreamID(id)
 	if err != nil {
 		return "", err
 	}
 
-	if milliseconds == 0 && sequence == 0 {
-		return "", ErrXAddIDZero
-	}
-
 	db.mu.Lock()
 	defer db.mu.Unlock()
+
+	var (
+		hasLast          bool
+		lastMilliseconds uint64
+		lastSequence     uint64
+	)
 	if stm, exists := db.streams[key]; exists && stm != nil && len(stm.entries) > 0 {
 		last := stm.entries[len(stm.entries)-1]
-		if !isIDStrictlyGreater(milliseconds, sequence, last.Milliseconds, last.Sequence) {
-			return "", ErrXAddIDTooSmall
-		}
+		hasLast = true
+		lastMilliseconds = last.Milliseconds
+		lastSequence = last.Sequence
 	}
+
+	milliseconds, sequence, err := resolveStreamID(parsedID, hasLast, lastMilliseconds, lastSequence)
+	if err != nil {
+		return "", err
+	}
+
+	resolvedID := strconv.FormatUint(milliseconds, 10) + "-" + strconv.FormatUint(sequence, 10)
 
 	stm := db.getOrCreateStream(key)
 	entryFields := make([]streamField, 0, len(fields)/2)
@@ -223,13 +290,13 @@ func (db *DB) XAdd(key, id string, fields []string) (string, error) {
 	}
 
 	stm.entries = append(stm.entries, streamEntry{
-		ID:           id,
+		ID:           resolvedID,
 		Milliseconds: milliseconds,
 		Sequence:     sequence,
 		Fields:       entryFields,
 	})
 
-	return id, nil
+	return resolvedID, nil
 }
 
 func (db *DB) LRange(key string, start, stop int) []string {
