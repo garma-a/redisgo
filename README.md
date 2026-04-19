@@ -11,6 +11,13 @@ RedisGo is a lightweight Redis-compatible in-memory database server implemented 
 - `SET` supports optional expiry: `EX` (seconds) and `PX` (milliseconds)
 - TTL expiration handling on read
 
+## Backend Engineering Notes
+
+- RESP parsing is isolated in `internal/resp` for protocol-layer separation.
+- Connection handling and command dispatch live in `internal/server`.
+- Storage is guarded by `sync.RWMutex` to support concurrent clients.
+- Expired keys are lazily cleaned during read access.
+
 ## Architecture
 
 ```text
@@ -80,3 +87,9 @@ After two seconds, `GET temp` should return nil.
 
 - The project intentionally focuses on a minimal command surface for educational clarity.
 - Commands outside the implemented set are not handled.
+
+## Future Enhancements
+
+- Add more Redis commands (e.g., `DEL`, `EXISTS`, `INCR`).
+- Improve protocol-level error responses for unsupported commands.
+- Add integration tests using a real Redis client against the running server.
