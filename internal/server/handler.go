@@ -12,7 +12,7 @@ import (
 	"github.com/GARMA-A/redisgo/internal/store"
 )
 
-func HandleClient(conn net.Conn, db *store.DB, isSlave bool) {
+func HandleClient(conn net.Conn, db *store.DB, isSlave bool, replicationId string, offset int64) {
 	defer conn.Close()
 
 	inMulti := false
@@ -111,7 +111,7 @@ func HandleClient(conn net.Conn, db *store.DB, isSlave bool) {
 			if len(args) == 1 {
 				haveReplicationInfo = true
 			}
-			handleInfo(conn, db, haveReplicationInfo, isSlave)
+			handleInfo(conn, db, haveReplicationInfo, isSlave, replicationId, offset)
 
 		default:
 			if inMulti {

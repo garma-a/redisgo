@@ -17,6 +17,9 @@ func main() {
 	replicaof := flag.String("replicaof", "", "Address of master to replicate from (host:port)")
 	flag.Parse()
 
+	replicationId := "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
+	offset := int64(0)
+
 	portNum, err := strconv.Atoi(*port)
 	if err != nil || portNum < 1 || portNum > 65535 {
 		fmt.Fprintf(os.Stderr, "Invalid --port value %q: must be an integer between 1 and 65535\n", *port)
@@ -37,7 +40,7 @@ func main() {
 			fmt.Println("Error accepting connection:", err)
 			continue
 		}
-		go server.HandleClient(conn, db, *replicaof != "")
+		go server.HandleClient(conn, db, *replicaof != "", replicationId, offset)
 
 	}
 }

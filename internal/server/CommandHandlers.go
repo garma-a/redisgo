@@ -178,14 +178,20 @@ func handleIncr(conn net.Conn, db *store.DB, args []string) {
 	conn.Write([]byte(fmt.Sprintf(":%d\r\n", newVal)))
 }
 
-func handleInfo(conn net.Conn, db *store.DB, haveReplicationArg bool, isSlave bool) {
+func handleInfo(conn net.Conn, db *store.DB, haveReplicationArg bool, isSlave bool, replicationId string, offset int64) {
 	if haveReplicationArg && isSlave {
-
-		conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len("role:slave"), "role:slave")))
+		body := fmt.Sprintf(
+			"role:%s\r\nmaster_replid:%s\r\nmaster_repl_offset:0",
+			"slave", replicationId,
+		)
+		conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len(body), body)))
 
 	} else if haveReplicationArg && !isSlave {
-
-		conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len("role:master"), "role:master")))
+		body := fmt.Sprintf(
+			"role:%s\r\nmaster_replid:%s\r\nmaster_repl_offset:0",
+			"master", replicationId,
+		)
+		conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len(body), body)))
 
 	} else {
 
