@@ -211,6 +211,20 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn) 
 			return
 		}
 		handleIncr(conn, db, args)
+	case "INFO":
+		if len(args) > 1 {
+			conn.Write([]byte("-ERR wrong number of arguments\r\n"))
+			return
+		}
+		if len(args) == 1 && strings.ToLower(args[0]) != "replication" {
+			conn.Write([]byte("-ERR invalid argument\r\n"))
+			return
+		}
+		var haveReplicationInfo bool = false
+		if len(args) == 1 {
+			haveReplicationInfo = true
+		}
+		handleInfo(conn, db, haveReplicationInfo)
 
 	default:
 		conn.Write([]byte("-ERR unknown command\r\n"))

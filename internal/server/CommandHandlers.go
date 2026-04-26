@@ -177,3 +177,12 @@ func handleIncr(conn net.Conn, db *store.DB, args []string) {
 	}
 	conn.Write([]byte(fmt.Sprintf(":%d\r\n", newVal)))
 }
+
+func handleInfo(conn net.Conn, db *store.DB, haveReplicationArg bool) {
+	if haveReplicationArg {
+		conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len("role:master"), "role:master")))
+		return
+	}
+	conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len("redis_version:0.1.0"), "redis_version:0.1.0")))
+
+}
