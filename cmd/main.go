@@ -33,7 +33,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Failed to connect to master at %s: %v\n", *replicaof, err)
 			os.Exit(1)
 		}
-		conn.Write([]byte("*2\r\n$3\r\nPING\r\n"))
+		conn.Write([]byte("*1\r\n$4\r\nPING\r\n "))
 		conn.Close()
 	}
 
