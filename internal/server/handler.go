@@ -12,7 +12,7 @@ import (
 	"github.com/GARMA-A/redisgo/internal/store"
 )
 
-func HandleClient(conn net.Conn, db *store.DB) {
+func HandleClient(conn net.Conn, db *store.DB, isSlave bool) {
 	defer conn.Close()
 
 	inMulti := false
@@ -224,7 +224,7 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn) 
 		if len(args) == 1 {
 			haveReplicationInfo = true
 		}
-		handleInfo(conn, db, haveReplicationInfo)
+		handleInfo(conn, db, haveReplicationInfo, isSlave)
 
 	default:
 		conn.Write([]byte("-ERR unknown command\r\n"))

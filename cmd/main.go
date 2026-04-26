@@ -14,6 +14,7 @@ import (
 func main() {
 	db := store.New()
 	port := flag.String("port", "6379", "Port to listen on")
+	replicaof := flag.String("replicaof", "", "Address of master to replicate from (host:port)")
 	flag.Parse()
 
 	portNum, err := strconv.Atoi(*port)
@@ -36,7 +37,7 @@ func main() {
 			fmt.Println("Error accepting connection:", err)
 			continue
 		}
-		go server.HandleClient(conn, db)
+		go server.HandleClient(conn, db, *replicaof == "")
 
 	}
 }
