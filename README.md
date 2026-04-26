@@ -1,33 +1,69 @@
-[![progress-banner](https://backend.codecrafters.io/progress/redis/013798bd-c512-4706-8d56-b4f00f48a025)](https://app.codecrafters.io/users/codecrafters-bot?r=2qF)
+# RedisGo
 
-This is a starting point for Go solutions to the
-["Build Your Own Redis" Challenge](https://codecrafters.io/challenges/redis).
+RedisGo is a lightweight, efficient, and robust implementation of the Redis server in Go. Built as part of the CodeCrafters Redis challenge, this project aims to provide a functional and fast in-memory data structure store, supporting various Redis commands, transactions, and the RESP protocol.
 
-In this challenge, you'll build a toy Redis clone that's capable of handling
-basic commands like `PING`, `SET` and `GET`. Along the way we'll learn about
-event loops, the Redis protocol and more.
+## Features Supported
+- **String Operations**: `SET`, `GET`, `INCR`, `TYPE`, with TTL expiration.
+- **List Operations**: `LPUSH`, `RPUSH`, `LPOP`, `LLEN`, `LRANGE`, and the blocking `BLPOP`.
+- **Stream Operations**: `XADD`, `XRANGE` with complex ID validation and resolution.
+- **Transactions**: `MULTI`, `EXEC`, `DISCARD` for atomic execution.
+- **Utility Commands**: `PING`, `ECHO`, `INFO`.
+- **Replication**: Partial support for `REPLCONF` and `PSYNC` for master-slave replication handshake.
 
-**Note**: If you're viewing this repo on GitHub, head over to
-[codecrafters.io](https://codecrafters.io) to try the challenge.
+## Demos
 
-# Passing the first stage
+### Strings
+![Strings Demo](assets/demo-strings.gif)
 
-The entry point for your Redis implementation is in `app/main.go`. Study and
-uncomment the relevant code, and push your changes to pass the first stage:
+### Lists
+![Lists Demo](assets/demo-lists.gif)
 
-```sh
-git commit -am "pass 1st stage" # any msg
-git push origin master
-```
+### Streams
+![Streams Demo](assets/demo-streams.gif)
 
-That's all!
+## Architecture & System Design
 
-# Stage 2 & beyond
+### High-Level Architecture
+![Architecture](assets/architecture.png)
+The server operates on a simple multi-threaded architecture where each incoming client connection is handled by a dedicated Goroutine. A central Thread-Safe Database acts as the primary data store, using `sync.RWMutex` to prevent race conditions across parallel queries.
 
-Note: This section is for stages 2 and beyond.
+### Concurrency Model
+![Concurrency](assets/concurrency.png)
+Concurrency is achieved by spawning a separate Goroutine for each TCP connection. Access to different data types (strings, lists, streams) is protected by lock mechanisms allowing concurrent reads (`RLock`) and exclusive writes (`Lock`). Blocking operations like `BLPOP` use Go channels (`waiters`) to suspend the Goroutine efficiently until data arrives, without polling or burning CPU cycles.
 
-1. Ensure you have `go (1.26)` installed locally
-1. Run `./your_program.sh` to run your Redis server, which is implemented in
-   `app/main.go`.
-1. Commit your changes and run `git push origin master` to submit your solution
-   to CodeCrafters. Test output will be streamed to your terminal.
+### Data Flow
+![Dataflow](assets/dataflow.png)
+1. The client sends a command over TCP.
+2. The server reads the byte stream and passes it to the `resp` parser.
+3. The parsed commands are evaluated in `server/handler.go`.
+4. If in a `MULTI` block, commands are queued.
+5. `executeCommand` interacts directly with `store.DB`, returning formatted RESP responses.
+
+### RESP Protocol Parsing
+![RESP Protocol](assets/resp_protocol.png)
+The custom parser implements the RESP (Redis Serialization Protocol), primarily decoding Arrays and Bulk Strings sent by the Redis client. It extracts the command and arguments iteratively, ensuring robust validation against malformed packets.
+
+## Architecture Decision Record (ADR)
+
+### ADR 1: Implementation Language (Go)
+**Context:** Need a language that handles network I/O and concurrency efficiently without excessive boilerplate.
+**Decision:** We chose Go. Goroutines provide cheap, lightweight threads, and the `net` package offers highly performant socket programming out-of-the-box.
+**Consequences:** Extremely straightforward concurrency handling.
+
+### ADR 2: In-Memory Storage & Synchronization
+**Context:** Redis is an in-memory data store. How should data be structured and protected from concurrent access?
+**Decision:** We used standard Go primitives (maps, slices) guarded by a single `sync.RWMutex`.
+**Consequences:** Simplifies implementation. Since most Redis commands are very fast, lock contention is minimal for this scale.
+
+### ADR 3: Blocking Operations (BLPOP) Waiters
+**Context:** `BLPOP` requires the server to wait if a list is empty, blocking the connection until another client pushes an element.
+**Decision:** We implemented `waiters` as an array of Go `chan string` inside the `list` structure. A `BLPOP` will create a channel, append it to waiters, and block on a read. A push operation checks for waiters and sends the value directly down the channel if one exists.
+**Consequences:** Immediate, event-driven resumption of blocked commands. Extremely efficient CPU usage compared to spin-locking.
+
+### ADR 4: Transaction Queuing (MULTI/EXEC)
+**Context:** Need to support atomic execution of multiple commands.
+**Decision:** State is maintained per-connection (`inMulti`, `queuedCommands`). When `EXEC` is called, a local `bufferConn` mocks the `net.Conn` to capture all command outputs before aggregating them into a single RESP array response.
+**Consequences:** Isolates transaction logic to the connection handler, preventing partially executed state from leaking to the client while still utilizing standard command handlers.
+
+---
+**Disclaimer**: This project is built for educational purposes and is a lightweight implementation of Redis Server functionalities.
