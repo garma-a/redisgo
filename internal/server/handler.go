@@ -227,6 +227,12 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn, 
 		}
 		var isSlave bool = replicaof != ""
 		handleInfo(conn, db, haveReplicationInfo, isSlave, replicationId, offset)
+	case "REPLCONF":
+		if len(args) != 2 {
+			conn.Write([]byte("-ERR wrong number of arguments\r\n"))
+			return
+		}
+		conn.Write([]byte("+OK\r\n"))
 
 	default:
 		conn.Write([]byte("-ERR unknown command\r\n"))
