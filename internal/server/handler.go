@@ -98,6 +98,20 @@ func HandleClient(conn net.Conn, db *store.DB, isSlave bool) {
 			inMulti = false
 			queuedCommands = queuedCommands[:0]
 			conn.Write([]byte("+OK\r\n"))
+		case "INFO":
+			if len(args) > 1 {
+				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
+				return
+			}
+			if len(args) == 1 && strings.ToLower(args[0]) != "replication" {
+				conn.Write([]byte("-ERR invalid argument\r\n"))
+				return
+			}
+			var haveReplicationInfo bool = false
+			if len(args) == 1 {
+				haveReplicationInfo = true
+			}
+			handleInfo(conn, db, haveReplicationInfo, isSlave)
 
 		default:
 			if inMulti {
@@ -211,20 +225,6 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn) 
 			return
 		}
 		handleIncr(conn, db, args)
-	case "INFO":
-		if len(args) > 1 {
-			conn.Write([]byte("-ERR wrong number of arguments\r\n"))
-			return
-		}
-		if len(args) == 1 && strings.ToLower(args[0]) != "replication" {
-			conn.Write([]byte("-ERR invalid argument\r\n"))
-			return
-		}
-		var haveReplicationInfo bool = false
-		if len(args) == 1 {
-			haveReplicationInfo = true
-		}
-		handleInfo(conn, db, haveReplicationInfo, isSlave)
 
 	default:
 		conn.Write([]byte("-ERR unknown command\r\n"))
