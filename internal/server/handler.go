@@ -189,6 +189,10 @@ func HandleClient(conn net.Conn, db *store.DB) {
 			}
 			weAreInsideMulti = true
 			conn.Write([]byte("+OK\r\n"))
+		case "EXEC":
+			if !weAreInsideMulti || len(parts) != 1 {
+				conn.Write([]byte("-ERR EXEC without MULTI\r\n"))
+			}
 		}
 	}
 }
