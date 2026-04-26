@@ -25,7 +25,6 @@ func runReplicationHandshake(replicaof string, listeningPort int) {
 		fmt.Fprintf(os.Stderr, "Failed to connect to master at %s: %v\n", replicaof, err)
 		os.Exit(1)
 	}
-	defer conn.Close()
 
 	if err := sendPing(conn); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to send PING to master at %s: %v\n", replicaof, err)
