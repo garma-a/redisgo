@@ -108,6 +108,13 @@ func HandleClient(conn net.Conn, db *store.DB) {
 			}
 			handleType(conn, db, parts)
 
+		case "INCR":
+			if len(parts) < 2 {
+				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
+				continue
+			}
+			handleIncr(conn, db, parts)
+
 		}
 	}
 }

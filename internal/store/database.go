@@ -547,3 +547,20 @@ func (db *DB) GetType(key string) string {
 		return "none"
 	}
 }
+
+func (db *DB) Incr(key string) (int, error) {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	val, exists := db.data[key]
+	if !exists {
+		db.data[key] = value{Data: "1"}
+		return 1, nil
+	}
+	num, err := strconv.Atoi(val.Data)
+	if err != nil {
+		return 0, errors.New("value is not an integer")
+	}
+	num++
+	db.data[key] = value{Data: strconv.Itoa(num)}
+	return num, nil
+}

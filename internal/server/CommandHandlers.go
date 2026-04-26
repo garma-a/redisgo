@@ -4,10 +4,20 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/GARMA-A/redisgo/internal/store"
 )
+
+func handleGet(conn net.Conn, db *store.DB, parts []string) {
+	val, exists := db.GetWithTTL(parts[1])
+	if exists {
+		conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len(val), val)))
+	} else {
+		conn.Write([]byte("$-1\r\n"))
+	}
+}
 
 func handleRPush(conn net.Conn, db *store.DB, parts []string) {
 	var length int
@@ -97,4 +107,70 @@ func handleType(conn net.Conn, db *store.DB, parts []string) {
 	key := parts[1]
 	myType := db.GetType(key)
 	conn.Write([]byte(fmt.Sprintf("+%s\r\n", myType)))
+}
+
+func handleSet(conn net.Conn, db *store.DB, parts []string) {
+	key := parts[1]
+	val := parts[2]
+	var expiry time.Time
+
+	if len(parts) >= 5 {
+		option := strings.ToUpper(parts[3])
+		expiryValue, _ := strconv.Atoi(parts[4])
+
+		if option == "EX" {
+			expiry = time.Now().Add(time.Duration(expiryValue) * time.Second)
+		} else if option == "PX" {
+			expiry = time.Now().Add(time.Duration(expiryValue) * time.Millisecond)
+		}
+	}
+	db.Set(key, val, expiry)
+	conn.Write([]byte("+OK\r\n"))
+}
+
+func handleXAdd(conn net.Conn, db *store.DB, parts []string) {
+	id, err := db.XAdd(parts[1], parts[2], parts[3:])
+	if err != nil {
+		switch err {
+		case store.ErrXAddIDTooSmall:
+			conn.Write([]byte("-ERR The ID specified in XADD is equal or smaller than the target stream top item\r\n"))
+		case store.ErrXAddIDZero:
+			conn.Write([]byte("-ERR The ID specified in XADD must be greater than 0-0\r\n"))
+		default:
+			conn.Write([]byte("-ERR Invalid stream ID specified as stream command argument\r\n"))
+		}
+		return
+	}
+	conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len(id), id)))
+}
+
+func handleXRange(conn net.Conn, db *store.DB, parts []string) {
+	entries, err := db.XRange(parts[1], parts[2], parts[3])
+	if err != nil {
+		conn.Write([]byte("-ERR Invalid stream ID specified as stream command argument\r\n"))
+		return
+	}
+
+	var builder strings.Builder
+	builder.WriteString(fmt.Sprintf("*%d\r\n", len(entries)))
+	for _, entry := range entries {
+		builder.WriteString("*2\r\n")
+		builder.WriteString(fmt.Sprintf("$%d\r\n%s\r\n", len(entry.ID), entry.ID))
+		builder.WriteString(fmt.Sprintf("*%d\r\n", len(entry.Fields)))
+		for _, item := range entry.Fields {
+			builder.WriteString(fmt.Sprintf("$%d\r\n%s\r\n", len(item), item))
+		}
+	}
+
+	conn.Write([]byte(builder.String()))
+}
+
+func handleIncr(conn net.Conn, db *store.DB, parts []string) {
+	newVal, err := db.Incr(parts[1])
+	if err != nil {
+		conn.Write([]byte("-ERR value is not an integer or out of range\r\n"))
+		return
+	}
+	conn.Write([]byte(fmt.Sprintf(":%d\r\n", newVal)))
+
 }
