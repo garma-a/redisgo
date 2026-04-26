@@ -37,7 +37,7 @@ func main() {
 			fmt.Println("Error accepting connection:", err)
 			continue
 		}
-		go server.HandleClient(conn, db, *replicaof == "")
+		go server.HandleClient(conn, db, *replicaof != "")
 
 	}
 }
