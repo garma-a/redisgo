@@ -248,7 +248,6 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn, 
 		conn.Write([]byte(fmt.Sprintf("+FULLRESYNC %s 0\r\n", replicationID)))
 		conn.Write([]byte(fmt.Sprintf("$%d\r\n", len(rdbBytes))))
 		conn.Write(rdbBytes)
-		conn.Write([]byte("\r\n"))
 
 	default:
 		conn.Write([]byte("-ERR unknown command\r\n"))
