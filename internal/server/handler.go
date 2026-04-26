@@ -194,6 +194,7 @@ func HandleClient(conn net.Conn, db *store.DB) {
 				conn.Write([]byte("-ERR EXEC without MULTI\r\n"))
 			}
 			if weAreInsideMulti && len(multiCommands) == 0 {
+				weAreInsideMulti = false
 				conn.Write([]byte("*0\r\n"))
 			}
 
