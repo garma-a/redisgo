@@ -86,6 +86,18 @@ func HandleClient(conn net.Conn, db *store.DB) {
 				out.Write(response)
 			}
 			conn.Write([]byte(out.String()))
+		case "DISCARD":
+			if len(args) != 0 {
+				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
+				continue
+			}
+			if !inMulti {
+				conn.Write([]byte("-ERR DISCARD without MULTI\r\n"))
+				continue
+			}
+			inMulti = false
+			queuedCommands = queuedCommands[:0]
+			conn.Write([]byte("+OK\r\n"))
 
 		default:
 			if inMulti {
