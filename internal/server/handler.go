@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
@@ -112,7 +113,7 @@ func HandleClient(conn net.Conn, db *store.DB, replicaof string, replicationId s
 	}
 }
 
-func executeCommand(command string, args []string, db *store.DB, conn net.Conn, replicaof string, replicationId string, offset int64) {
+func executeCommand(command string, args []string, db *store.DB, conn net.Conn, replicaof string, replicationID string, offset int64) {
 	switch command {
 	case "PING":
 		if len(args) != 0 {
@@ -226,7 +227,7 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn, 
 			haveReplicationInfo = true
 		}
 		var isSlave bool = replicaof != ""
-		handleInfo(conn, db, haveReplicationInfo, isSlave, replicationId, offset)
+		handleInfo(conn, db, haveReplicationInfo, isSlave, replicationID, offset)
 	case "REPLCONF":
 		if len(args) != 2 {
 			conn.Write([]byte("-ERR wrong number of arguments\r\n"))
@@ -238,8 +239,16 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn, 
 			conn.Write([]byte("-ERR wrong number of arguments\r\n"))
 			return
 		}
-		conn.Write([]byte(fmt.Sprintf("+FULLRESYNC %s %d\r\n", replicationId, offset)))
-		conn.Write([]byte("$0\r\n\r\n"))
+		rdbHex := "524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2"
+		rdbBytes, err := hex.DecodeString(rdbHex)
+		if err != nil {
+			conn.Write([]byte("-ERR failed to decode RDB data\r\n"))
+			return
+		}
+		conn.Write([]byte(fmt.Sprintf("+FULLRESYNC %s 0\r\n", replicationID)))
+		conn.Write([]byte(fmt.Sprintf("$%d\r\n", len(rdbBytes))))
+		conn.Write(rdbBytes)
+		conn.Write([]byte("\r\n"))
 
 	default:
 		conn.Write([]byte("-ERR unknown command\r\n"))
