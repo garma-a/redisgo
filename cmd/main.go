@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"net"
 	"os"
@@ -11,7 +12,9 @@ import (
 
 func main() {
 	db := store.New()
-	l, err := net.Listen("tcp", "0.0.0.0:6379")
+	port := flag.String("port", "6379", "Port to listen on")
+	flag.Parse()
+	l, err := net.Listen("tcp", "0.0.0.0:"+*port)
 	if err != nil {
 		fmt.Println("Failed to bind to port 6379")
 		os.Exit(1)
