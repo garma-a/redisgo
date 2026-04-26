@@ -25,13 +25,14 @@ func runReplicationHandshake(replicaof string, listeningPort int) {
 		fmt.Fprintf(os.Stderr, "Failed to connect to master at %s: %v\n", replicaof, err)
 		os.Exit(1)
 	}
+	reader := bufio.NewReader(conn)
 
 	if err := sendPing(conn); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to send PING to master at %s: %v\n", replicaof, err)
 		os.Exit(1)
 	}
 
-	if err := waitForPong(conn); err != nil {
+	if err := waitForSimpleString(reader, "PONG"); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to read PING response from master at %s: %v\n", replicaof, err)
 		os.Exit(1)
 	}
@@ -41,8 +42,23 @@ func runReplicationHandshake(replicaof string, listeningPort int) {
 		os.Exit(1)
 	}
 
+	if err := waitForSimpleString(reader, "OK"); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to read REPLCONF listening-port response from master at %s: %v\n", replicaof, err)
+		os.Exit(1)
+	}
+
 	if err := sendReplconfCapaPsync2(conn); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to send REPLCONF capa psync2 to master at %s: %v\n", replicaof, err)
+		os.Exit(1)
+	}
+
+	if err := waitForSimpleString(reader, "OK"); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to read REPLCONF capa psync2 response from master at %s: %v\n", replicaof, err)
+		os.Exit(1)
+	}
+
+	if err := sendPsync(conn); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to send PSYNC to master at %s: %v\n", replicaof, err)
 		os.Exit(1)
 	}
 }
@@ -52,13 +68,12 @@ func sendPing(conn net.Conn) error {
 	return err
 }
 
-func waitForPong(conn net.Conn) error {
-	reader := bufio.NewReader(conn)
+func waitForSimpleString(reader *bufio.Reader, expected string) error {
 	line, err := reader.ReadString('\n')
 	if err != nil {
 		return err
 	}
-	if line != "+PONG\r\n" {
+	if line != fmt.Sprintf("+%s\r\n", expected) {
 		return fmt.Errorf("unexpected response: %q", line)
 	}
 	return nil
@@ -72,5 +87,10 @@ func sendReplconfListeningPort(conn net.Conn, listeningPort int) error {
 
 func sendReplconfCapaPsync2(conn net.Conn) error {
 	_, err := conn.Write([]byte("*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n"))
+	return err
+}
+
+func sendPsync(conn net.Conn) error {
+	_, err := conn.Write([]byte("*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n"))
 	return err
 }
