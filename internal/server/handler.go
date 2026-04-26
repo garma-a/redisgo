@@ -233,6 +233,12 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn, 
 			return
 		}
 		conn.Write([]byte("+OK\r\n"))
+	case "PSYNC":
+		if len(args) != 2 {
+			conn.Write([]byte("-ERR wrong number of arguments\r\n"))
+			return
+		}
+		conn.Write([]byte(fmt.Sprintf("+FULLRESYNC %s %d\r\n", replicationId, offset)))
 
 	default:
 		conn.Write([]byte("-ERR unknown command\r\n"))
