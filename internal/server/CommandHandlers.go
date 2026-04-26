@@ -174,3 +174,7 @@ func handleIncr(conn net.Conn, db *store.DB, parts []string) {
 	conn.Write([]byte(fmt.Sprintf(":%d\r\n", newVal)))
 
 }
+
+func handleMulti(conn net.Conn, db *store.DB, parts []string) {
+	conn.Write([]byte("+OK\r\n"))
+}
