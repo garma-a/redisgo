@@ -52,7 +52,7 @@ func handleCommand(command string, args []string, db *store.DB, conn net.Conn) {
 			conn.Write([]byte("+QUEUED\r\n"))
 			return
 		}
-		conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len(args[1]), parts[1])))
+		conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len(args[1]), args[0])))
 	case "SET":
 		if len(args) < 1 {
 			conn.Write([]byte("-ERR wrong number of arguments\r\n"))
