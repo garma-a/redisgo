@@ -44,6 +44,7 @@ func HandleClient(conn net.Conn, db *store.DB) {
 			}
 			if weAreInsideMulti {
 				multiCommands = append(multiCommands, parts)
+				conn.Write([]byte("+QUEUED\r\n"))
 				continue
 			}
 			conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len(parts[1]), parts[1])))
@@ -55,6 +56,8 @@ func HandleClient(conn net.Conn, db *store.DB) {
 
 			if weAreInsideMulti {
 				multiCommands = append(multiCommands, parts)
+
+				conn.Write([]byte("+QUEUED\r\n"))
 				continue
 			}
 			handleSet(conn, db, parts)
@@ -66,6 +69,8 @@ func HandleClient(conn net.Conn, db *store.DB) {
 
 			if weAreInsideMulti {
 				multiCommands = append(multiCommands, parts)
+
+				conn.Write([]byte("+QUEUED\r\n"))
 				continue
 			}
 			handleGet(conn, db, parts)
@@ -77,6 +82,8 @@ func HandleClient(conn net.Conn, db *store.DB) {
 
 			if weAreInsideMulti {
 				multiCommands = append(multiCommands, parts)
+
+				conn.Write([]byte("+QUEUED\r\n"))
 				continue
 			}
 			handleRPush(conn, db, parts)
@@ -88,6 +95,8 @@ func HandleClient(conn net.Conn, db *store.DB) {
 
 			if weAreInsideMulti {
 				multiCommands = append(multiCommands, parts)
+
+				conn.Write([]byte("+QUEUED\r\n"))
 				continue
 			}
 			handleLRange(conn, db, parts)
@@ -99,6 +108,8 @@ func HandleClient(conn net.Conn, db *store.DB) {
 
 			if weAreInsideMulti {
 				multiCommands = append(multiCommands, parts)
+
+				conn.Write([]byte("+QUEUED\r\n"))
 				continue
 			}
 			handleLPush(conn, db, parts)
@@ -110,6 +121,8 @@ func HandleClient(conn net.Conn, db *store.DB) {
 
 			if weAreInsideMulti {
 				multiCommands = append(multiCommands, parts)
+
+				conn.Write([]byte("+QUEUED\r\n"))
 				continue
 			}
 			handleLLEN(conn, db, parts)
@@ -121,6 +134,8 @@ func HandleClient(conn net.Conn, db *store.DB) {
 
 			if weAreInsideMulti {
 				multiCommands = append(multiCommands, parts)
+
+				conn.Write([]byte("+QUEUED\r\n"))
 				continue
 			}
 			handleLPop(conn, db, parts)
@@ -132,6 +147,8 @@ func HandleClient(conn net.Conn, db *store.DB) {
 
 			if weAreInsideMulti {
 				multiCommands = append(multiCommands, parts)
+
+				conn.Write([]byte("+QUEUED\r\n"))
 				continue
 			}
 			handleBLPOP(conn, db, parts)
@@ -143,6 +160,8 @@ func HandleClient(conn net.Conn, db *store.DB) {
 
 			if weAreInsideMulti {
 				multiCommands = append(multiCommands, parts)
+
+				conn.Write([]byte("+QUEUED\r\n"))
 				continue
 			}
 			handleXAdd(conn, db, parts)
@@ -154,6 +173,8 @@ func HandleClient(conn net.Conn, db *store.DB) {
 
 			if weAreInsideMulti {
 				multiCommands = append(multiCommands, parts)
+
+				conn.Write([]byte("+QUEUED\r\n"))
 				continue
 			}
 			handleXRange(conn, db, parts)
@@ -166,6 +187,8 @@ func HandleClient(conn net.Conn, db *store.DB) {
 
 			if weAreInsideMulti {
 				multiCommands = append(multiCommands, parts)
+
+				conn.Write([]byte("+QUEUED\r\n"))
 				continue
 			}
 			handleType(conn, db, parts)
@@ -178,6 +201,7 @@ func HandleClient(conn net.Conn, db *store.DB) {
 
 			if weAreInsideMulti {
 				multiCommands = append(multiCommands, parts)
+				conn.Write([]byte("+QUEUED\r\n"))
 				continue
 			}
 			handleIncr(conn, db, parts)
