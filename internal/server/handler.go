@@ -12,7 +12,7 @@ import (
 	"github.com/GARMA-A/redisgo/internal/store"
 )
 
-func HandleClient(conn net.Conn, db *store.DB, isSlave bool, replicationId string, offset int64) {
+func HandleClient(conn net.Conn, db *store.DB, replicaof string, replicationId string, offset int64) {
 	defer conn.Close()
 
 	inMulti := false
@@ -73,7 +73,7 @@ func HandleClient(conn net.Conn, db *store.DB, isSlave bool, replicationId strin
 					continue
 				}
 				capture := &bufferConn{}
-				executeCommand(strings.ToUpper(queued[0]), queued[1:], db, capture)
+				executeCommand(strings.ToUpper(queued[0]), queued[1:], db, capture, replicaof, replicationId, offset)
 				responses = append(responses, capture.Bytes())
 			}
 
@@ -98,20 +98,6 @@ func HandleClient(conn net.Conn, db *store.DB, isSlave bool, replicationId strin
 			inMulti = false
 			queuedCommands = queuedCommands[:0]
 			conn.Write([]byte("+OK\r\n"))
-		case "INFO":
-			if len(args) > 1 {
-				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
-				return
-			}
-			if len(args) == 1 && strings.ToLower(args[0]) != "replication" {
-				conn.Write([]byte("-ERR invalid argument\r\n"))
-				return
-			}
-			var haveReplicationInfo bool = false
-			if len(args) == 1 {
-				haveReplicationInfo = true
-			}
-			handleInfo(conn, db, haveReplicationInfo, isSlave, replicationId, offset)
 
 		default:
 			if inMulti {
@@ -121,12 +107,12 @@ func HandleClient(conn net.Conn, db *store.DB, isSlave bool, replicationId strin
 				continue
 			}
 
-			executeCommand(command, args, db, conn)
+			executeCommand(command, args, db, conn, replicaof, replicationId, offset)
 		}
 	}
 }
 
-func executeCommand(command string, args []string, db *store.DB, conn net.Conn) {
+func executeCommand(command string, args []string, db *store.DB, conn net.Conn, replicaof string, replicationId string, offset int64) {
 	switch command {
 	case "PING":
 		if len(args) != 0 {
@@ -225,6 +211,22 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn) 
 			return
 		}
 		handleIncr(conn, db, args)
+
+	case "INFO":
+		if len(args) > 1 {
+			conn.Write([]byte("-ERR wrong number of arguments\r\n"))
+			return
+		}
+		if len(args) == 1 && strings.ToLower(args[0]) != "replication" {
+			conn.Write([]byte("-ERR invalid argument\r\n"))
+			return
+		}
+		var haveReplicationInfo bool = false
+		if len(args) == 1 {
+			haveReplicationInfo = true
+		}
+		var isSlave bool = replicaof != ""
+		handleInfo(conn, db, haveReplicationInfo, isSlave, replicationId, offset)
 
 	default:
 		conn.Write([]byte("-ERR unknown command\r\n"))
