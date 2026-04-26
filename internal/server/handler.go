@@ -38,7 +38,7 @@ func HandleClient(conn net.Conn, db *store.DB) {
 		case "PING":
 			conn.Write([]byte("+PONG\r\n"))
 		case "ECHO":
-			if len(parts) < 2 || len(parts) > 3 {
+			if len(parts) < 2 {
 				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
 				continue
 			}
@@ -48,7 +48,7 @@ func HandleClient(conn net.Conn, db *store.DB) {
 			}
 			conn.Write([]byte(fmt.Sprintf("$%d\r\n%s\r\n", len(parts[1]), parts[1])))
 		case "SET":
-			if len(parts) < 3 || len(parts) > 5 {
+			if len(parts) < 3 {
 				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
 				continue
 			}
@@ -59,7 +59,7 @@ func HandleClient(conn net.Conn, db *store.DB) {
 			}
 			handleSet(conn, db, parts)
 		case "GET":
-			if len(parts) < 2 || len(parts) > 3 {
+			if len(parts) < 2 {
 				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
 				continue
 			}
@@ -70,7 +70,7 @@ func HandleClient(conn net.Conn, db *store.DB) {
 			}
 			handleGet(conn, db, parts)
 		case "RPUSH":
-			if len(parts) < 3 || len(parts) > 4 {
+			if len(parts) < 3 {
 				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
 				continue
 			}
@@ -81,7 +81,7 @@ func HandleClient(conn net.Conn, db *store.DB) {
 			}
 			handleRPush(conn, db, parts)
 		case "LRANGE":
-			if len(parts) < 4 || len(parts) > 4 {
+			if len(parts) < 4 {
 				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
 				continue
 			}
@@ -92,7 +92,7 @@ func HandleClient(conn net.Conn, db *store.DB) {
 			}
 			handleLRange(conn, db, parts)
 		case "LPUSH":
-			if len(parts) < 3 || len(parts) > 4 {
+			if len(parts) < 3 {
 				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
 				continue
 			}
@@ -103,7 +103,7 @@ func HandleClient(conn net.Conn, db *store.DB) {
 			}
 			handleLPush(conn, db, parts)
 		case "LLEN":
-			if len(parts) < 2 || len(parts) > 3 {
+			if len(parts) < 2 {
 				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
 				continue
 			}
@@ -114,7 +114,7 @@ func HandleClient(conn net.Conn, db *store.DB) {
 			}
 			handleLLEN(conn, db, parts)
 		case "LPOP":
-			if len(parts) < 2 || len(parts) > 3 {
+			if len(parts) < 2 {
 				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
 				continue
 			}
@@ -125,7 +125,7 @@ func HandleClient(conn net.Conn, db *store.DB) {
 			}
 			handleLPop(conn, db, parts)
 		case "BLPOP":
-			if len(parts) < 3 || (len(parts)-2)%2 != 0 {
+			if len(parts) < 3 {
 				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
 				continue
 			}
@@ -136,7 +136,7 @@ func HandleClient(conn net.Conn, db *store.DB) {
 			}
 			handleBLPOP(conn, db, parts)
 		case "XADD":
-			if len(parts) < 5 || (len(parts)-3)%2 != 0 {
+			if len(parts) < 5 {
 				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
 				continue
 			}
@@ -147,7 +147,7 @@ func HandleClient(conn net.Conn, db *store.DB) {
 			}
 			handleXAdd(conn, db, parts)
 		case "XRANGE":
-			if len(parts) != 4 || parts[2] == "" || parts[3] == "" {
+			if len(parts) != 4 {
 				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
 				continue
 			}
@@ -159,7 +159,7 @@ func HandleClient(conn net.Conn, db *store.DB) {
 			handleXRange(conn, db, parts)
 
 		case "TYPE":
-			if len(parts) < 2 || len(parts) > 3 {
+			if len(parts) < 2 {
 				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
 				continue
 			}
@@ -171,7 +171,7 @@ func HandleClient(conn net.Conn, db *store.DB) {
 			handleType(conn, db, parts)
 
 		case "INCR":
-			if len(parts) < 2 || len(parts) > 3 {
+			if len(parts) < 2 {
 				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
 				continue
 			}
