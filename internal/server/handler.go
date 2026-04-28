@@ -7,11 +7,57 @@ import (
 	"io"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/GARMA-A/redisgo/internal/resp"
 	"github.com/GARMA-A/redisgo/internal/store"
 )
+
+var (
+	replicationsConn  map[net.Conn]struct{} = make(map[net.Conn]struct{})
+	replicationConnMu sync.RWMutex          = sync.RWMutex{}
+)
+
+func addReplicationsConn(conn net.Conn) {
+	replicationConnMu.Lock()
+	replicationsConn[conn] = struct{}{}
+	replicationConnMu.Unlock()
+}
+func getReplicationsConn() []net.Conn {
+	replicationConnMu.RLock()
+	defer replicationConnMu.RUnlock()
+	conns := make([]net.Conn, 0, len(replicationsConn))
+	for conn := range replicationsConn {
+		conns = append(conns, conn)
+	}
+	return conns
+}
+
+func encodeRespArray(command string, args []string) []byte {
+	var b strings.Builder
+	total := 1 + len(args)
+	b.WriteString(fmt.Sprintf("*%d\r\n", total))
+	b.WriteString(fmt.Sprintf("$%d\r\n%s\r\n", len(command), command))
+	for _, arg := range args {
+		b.WriteString(fmt.Sprintf("$%d\r\n%s\r\n", len(arg), arg))
+	}
+	return []byte(b.String())
+}
+func propagateIfReplicas(command string, args []string) {
+	payload := encodeRespArray(command, args)
+	for _, conn := range getReplicationsConn() {
+		_, err := conn.Write(payload)
+		if err != nil {
+			fmt.Printf("Error propagating to replica: %v\n", err)
+			conn.Close()
+			replicationConnMu.Lock()
+			delete(replicationsConn, conn)
+			replicationConnMu.Unlock()
+		}
+	}
+
+}
 
 func HandleClient(conn net.Conn, db *store.DB, replicaof string, replicationId string, offset int64) {
 	defer conn.Close()
@@ -135,6 +181,7 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn, 
 			return
 		}
 		handleSet(conn, db, args)
+		propagateIfReplicas("SET", args)
 
 	case "GET":
 		if len(args) != 1 {
@@ -149,6 +196,7 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn, 
 			return
 		}
 		handleRPush(conn, db, args)
+		propagateIfReplicas("RPUSH", args)
 
 	case "LRANGE":
 		if len(args) != 3 {
@@ -163,6 +211,7 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn, 
 			return
 		}
 		handleLPush(conn, db, args)
+		propagateIfReplicas("LPUSH", args)
 
 	case "LLEN":
 		if len(args) != 1 {
@@ -177,6 +226,7 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn, 
 			return
 		}
 		handleLPop(conn, db, args)
+		propagateIfReplicas("LPOP", args)
 
 	case "BLPOP":
 		if len(args) < 2 {
@@ -184,6 +234,7 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn, 
 			return
 		}
 		handleBLPOP(conn, db, args)
+		propagateIfReplicas("BLPOP", args)
 
 	case "XADD":
 		if len(args) < 4 || (len(args)-2)%2 != 0 {
@@ -191,6 +242,7 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn, 
 			return
 		}
 		handleXAdd(conn, db, args)
+		propagateIfReplicas("XADD", args)
 
 	case "XRANGE":
 		if len(args) != 3 {
@@ -212,6 +264,7 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn, 
 			return
 		}
 		handleIncr(conn, db, args)
+		propagateIfReplicas("INCR", args)
 
 	case "INFO":
 		if len(args) > 1 {
@@ -248,6 +301,7 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn, 
 		conn.Write([]byte(fmt.Sprintf("+FULLRESYNC %s 0\r\n", replicationID)))
 		conn.Write([]byte(fmt.Sprintf("$%d\r\n", len(rdbBytes))))
 		conn.Write(rdbBytes)
+		addReplicationsConn(conn)
 
 	default:
 		conn.Write([]byte("-ERR unknown command\r\n"))
