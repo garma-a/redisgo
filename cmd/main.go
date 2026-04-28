@@ -22,14 +22,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	replicationId := "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
+	offset := int64(0)
+	db := store.New()
+
 	if *replicaof != "" {
 		go runReplicationHandshake(*replicaof, portNum, db, replicationId, offset)
 	}
 
-	replicationId := "8371b4fb1155b71f4a04d3e1bc3e18c4a990aeeb"
-	offset := int64(0)
-
-	db := store.New()
 	address := net.JoinHostPort("0.0.0.0", strconv.Itoa(portNum))
 	l, err := net.Listen("tcp", address)
 	if err != nil {
@@ -37,6 +37,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer l.Close()
+
 	fmt.Printf("Redis Go Server started on %s\n", address)
 	for {
 		conn, err := l.Accept()
