@@ -2,7 +2,6 @@ package store
 
 import (
 	"errors"
-	"net"
 	"strconv"
 	"strings"
 	"sync"
