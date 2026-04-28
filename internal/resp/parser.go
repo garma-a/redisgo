@@ -1,10 +1,14 @@
 package resp
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 )
+
+var ErrIncomplete = errors.New("incomplete data")
 
 // Parse converts a raw RESP (Redis Serialization Protocol) byte slice into a slice of strings.
 //
@@ -70,4 +74,51 @@ func Parse(data []byte) ([]string, error) {
 		return result, nil
 	}
 	return nil, fmt.Errorf("unsupported format")
+}
+
+func ParseNext(data []byte) ([]string, int, error) {
+	if len(data) == 0 {
+		return nil, 0, ErrIncomplete
+	}
+	if data[0] != '*' {
+		return nil, 0, fmt.Errorf("unsupported format")
+	}
+	lineEnd := bytes.Index(data, []byte("\r\n"))
+	if lineEnd == -1 {
+		return nil, 0, ErrIncomplete
+	}
+	numElements, err := strconv.Atoi(string(data[1:lineEnd]))
+	if err != nil {
+		return nil, 0, fmt.Errorf("invalid array format")
+	}
+	idx := lineEnd + 2
+	result := make([]string, 0, numElements)
+	for i := 0; i < numElements; i++ {
+		if idx >= len(data) {
+			return nil, 0, ErrIncomplete
+		}
+		if data[idx] != '$' {
+			return nil, 0, fmt.Errorf("expected bulk string")
+		}
+		lenEnd := bytes.Index(data[idx:], []byte("\r\n"))
+		if lenEnd == -1 {
+			return nil, 0, ErrIncomplete
+		}
+		lenStr := string(data[idx+1 : idx+lenEnd])
+		bulkLen, err := strconv.Atoi(lenStr)
+		if err != nil || bulkLen < 0 {
+			return nil, 0, fmt.Errorf("invalid bulk string length")
+		}
+		idx = idx + lenEnd + 2
+		if idx+bulkLen+2 > len(data) {
+			return nil, 0, ErrIncomplete
+		}
+		result = append(result, string(data[idx:idx+bulkLen]))
+		idx += bulkLen
+		if data[idx] != '\r' || data[idx+1] != '\n' {
+			return nil, 0, fmt.Errorf("invalid bulk terminator")
+		}
+		idx += 2
+	}
+	return result, idx, nil
 }

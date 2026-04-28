@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -65,6 +66,7 @@ func HandleClient(conn net.Conn, db *store.DB, replicaof string, replicationId s
 	inMulti := false
 	queuedCommands := make([][]string, 0)
 
+	pending := make([]byte, 0, 4096)
 	buf := make([]byte, 1024)
 	for {
 		n, err := conn.Read(buf)
@@ -74,87 +76,93 @@ func HandleClient(conn net.Conn, db *store.DB, replicaof string, replicationId s
 			}
 			break
 		}
-
-		parts, err := resp.Parse(buf[:n])
-		if err != nil {
-			continue
-		}
-		if len(parts) == 0 || parts[0] == "" {
-			continue
-		}
-
-		command := strings.ToUpper(parts[0])
-		args := parts[1:]
-
-		switch command {
-		case "MULTI":
-			if len(args) != 0 {
-				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
+		pending = append(pending, buf[:n]...)
+		for {
+			parts, consumed, err := resp.ParseNext(pending)
+			if err != nil {
+				if errors.Is(err, resp.ErrIncomplete) {
+					break
+				}
+				pending = pending[:0]
+				break
+			}
+			pending = pending[consumed:]
+			if len(parts) == 0 || parts[0] == "" {
 				continue
 			}
-			inMulti = true
-			queuedCommands = queuedCommands[:0]
-			conn.Write([]byte("+OK\r\n"))
+			command := strings.ToUpper(parts[0])
+			args := parts[1:]
 
-		case "EXEC":
-			if len(args) != 0 {
-				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
-				continue
-			}
-			if !inMulti {
-				conn.Write([]byte("-ERR EXEC without MULTI\r\n"))
-				continue
-			}
-
-			if len(queuedCommands) == 0 {
-				inMulti = false
-				queuedCommands = queuedCommands[:0]
-				conn.Write([]byte("*0\r\n"))
-				continue
-			}
-
-			responses := make([][]byte, 0, len(queuedCommands))
-			for _, queued := range queuedCommands {
-				if len(queued) == 0 {
-					responses = append(responses, []byte("-ERR unknown command\r\n"))
+			switch command {
+			case "MULTI":
+				if len(args) != 0 {
+					conn.Write([]byte("-ERR wrong number of arguments\r\n"))
 					continue
 				}
-				capture := &bufferConn{}
-				executeCommand(strings.ToUpper(queued[0]), queued[1:], db, capture, replicaof, replicationId, offset)
-				responses = append(responses, capture.Bytes())
-			}
+				inMulti = true
+				queuedCommands = queuedCommands[:0]
+				conn.Write([]byte("+OK\r\n"))
 
-			inMulti = false
-			queuedCommands = queuedCommands[:0]
+			case "EXEC":
+				if len(args) != 0 {
+					conn.Write([]byte("-ERR wrong number of arguments\r\n"))
+					continue
+				}
+				if !inMulti {
+					conn.Write([]byte("-ERR EXEC without MULTI\r\n"))
+					continue
+				}
 
-			var out strings.Builder
-			out.WriteString(fmt.Sprintf("*%d\r\n", len(responses)))
-			for _, response := range responses {
-				out.Write(response)
-			}
-			conn.Write([]byte(out.String()))
-		case "DISCARD":
-			if len(args) != 0 {
-				conn.Write([]byte("-ERR wrong number of arguments\r\n"))
-				continue
-			}
-			if !inMulti {
-				conn.Write([]byte("-ERR DISCARD without MULTI\r\n"))
-				continue
-			}
-			inMulti = false
-			queuedCommands = queuedCommands[:0]
-			conn.Write([]byte("+OK\r\n"))
+				if len(queuedCommands) == 0 {
+					inMulti = false
+					queuedCommands = queuedCommands[:0]
+					conn.Write([]byte("*0\r\n"))
+					continue
+				}
 
-		default:
-			if inMulti {
-				queuedCopy := append([]string(nil), parts...)
-				queuedCommands = append(queuedCommands, queuedCopy)
-				conn.Write([]byte("+QUEUED\r\n"))
-				continue
-			}
+				responses := make([][]byte, 0, len(queuedCommands))
+				for _, queued := range queuedCommands {
+					if len(queued) == 0 {
+						responses = append(responses, []byte("-ERR unknown command\r\n"))
+						continue
+					}
+					capture := &bufferConn{}
+					executeCommand(strings.ToUpper(queued[0]), queued[1:], db, capture, replicaof, replicationId, offset)
+					responses = append(responses, capture.Bytes())
+				}
 
-			executeCommand(command, args, db, conn, replicaof, replicationId, offset)
+				inMulti = false
+				queuedCommands = queuedCommands[:0]
+
+				var out strings.Builder
+				out.WriteString(fmt.Sprintf("*%d\r\n", len(responses)))
+				for _, response := range responses {
+					out.Write(response)
+				}
+				conn.Write([]byte(out.String()))
+			case "DISCARD":
+				if len(args) != 0 {
+					conn.Write([]byte("-ERR wrong number of arguments\r\n"))
+					continue
+				}
+				if !inMulti {
+					conn.Write([]byte("-ERR DISCARD without MULTI\r\n"))
+					continue
+				}
+				inMulti = false
+				queuedCommands = queuedCommands[:0]
+				conn.Write([]byte("+OK\r\n"))
+
+			default:
+				if inMulti {
+					queuedCopy := append([]string(nil), parts...)
+					queuedCommands = append(queuedCommands, queuedCopy)
+					conn.Write([]byte("+QUEUED\r\n"))
+					continue
+				}
+
+				executeCommand(command, args, db, conn, replicaof, replicationId, offset)
+			}
 		}
 	}
 }
