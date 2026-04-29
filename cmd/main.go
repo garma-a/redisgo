@@ -13,7 +13,7 @@ import (
 
 func main() {
 	port := flag.String("port", "6379", "Port to listen on")
-	replicaof := flag.String("replicaof", "", "Address of master to replicate from (host port)")
+	replicaof := flag.String("replicaof", "master server", "Address of master to replicate from (host port)")
 	flag.Parse()
 
 	portNum, err := strconv.Atoi(*port)
@@ -26,7 +26,7 @@ func main() {
 	offset := int64(0)
 	db := store.New()
 
-	if *replicaof != "" {
+	if *replicaof != "master server" {
 		go runReplicationHandshake(*replicaof, portNum, db, replicationId, offset)
 	}
 

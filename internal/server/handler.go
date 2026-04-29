@@ -38,10 +38,10 @@ func getReplicationsConn() []net.Conn {
 func encodeRespArray(command string, args []string) []byte {
 	var b strings.Builder
 	total := 1 + len(args)
-	b.WriteString(fmt.Sprintf("*%d\r\n", total))
-	b.WriteString(fmt.Sprintf("$%d\r\n%s\r\n", len(command), command))
+	fmt.Fprintf(&b, "*%d\r\n", total)
+	fmt.Fprintf(&b, "$%d\r\n%s\r\n", len(command), command)
 	for _, arg := range args {
-		b.WriteString(fmt.Sprintf("$%d\r\n%s\r\n", len(arg), arg))
+		fmt.Fprintf(&b, "$%d\r\n%s\r\n", len(arg), arg)
 	}
 	return []byte(b.String())
 }
@@ -65,9 +65,9 @@ func HandleClient(conn net.Conn, db *store.DB, replicaof string, replicationId s
 
 	inMulti := false
 	queuedCommands := make([][]string, 0)
-
 	pending := make([]byte, 0, 4096)
 	buf := make([]byte, 1024)
+
 	for {
 		n, err := conn.Read(buf)
 		if err != nil {
@@ -310,6 +310,13 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn, 
 		conn.Write([]byte(fmt.Sprintf("$%d\r\n", len(rdbBytes))))
 		conn.Write(rdbBytes)
 		addReplicationsConn(conn)
+
+	case "REPLCONF GETACK *":
+		if len(args) != 3 || strings.ToUpper(args[0]) != "GETACK" || args[1] != "*" {
+			conn.Write([]byte("-ERR wrong number of arguments\r\n"))
+			return
+		}
+		conn.Write([]byte("*3\r\n$8\r\nreplconf\r\n$3\r\nack\r\n$1\r\n0\r\n"))
 
 	default:
 		conn.Write([]byte("-ERR unknown command\r\n"))

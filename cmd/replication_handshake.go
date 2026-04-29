@@ -60,6 +60,7 @@ func runReplicationHandshake(replicaof string, listeningPort int, db *store.DB, 
 		fmt.Fprintf(os.Stderr, "Invalid --replicaof value %q: must be in the format host port\n", replicaof)
 		os.Exit(1)
 	}
+
 	masterPort, err := strconv.Atoi(hostPortArr[1])
 	if err != nil || masterPort < 1 || masterPort > 65535 {
 		fmt.Fprintf(os.Stderr, "Invalid port in --replicaof value %q: must be an integer between 1 and 65535\n", replicaof)
