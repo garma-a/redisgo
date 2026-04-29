@@ -294,6 +294,10 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn, 
 			conn.Write([]byte("-ERR wrong number of arguments\r\n"))
 			return
 		}
+		if len(args) > 2 {
+			conn.Write([]byte("*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$1\r\n0\r\n"))
+			return
+		}
 		conn.Write([]byte("+OK\r\n"))
 	case "PSYNC":
 		if len(args) != 2 {
@@ -310,13 +314,6 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn, 
 		conn.Write([]byte(fmt.Sprintf("$%d\r\n", len(rdbBytes))))
 		conn.Write(rdbBytes)
 		addReplicationsConn(conn)
-
-	case "REPLCONF GETACK *":
-		if len(args) != 3 || strings.ToUpper(args[0]) != "GETACK" || args[1] != "*" {
-			conn.Write([]byte("-ERR wrong number of arguments\r\n"))
-			return
-		}
-		conn.Write([]byte("*3\r\n$8\r\nreplconf\r\n$3\r\nack\r\n$1\r\n0\r\n"))
 
 	default:
 		conn.Write([]byte("-ERR unknown command\r\n"))
