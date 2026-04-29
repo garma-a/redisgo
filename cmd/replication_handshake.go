@@ -24,6 +24,9 @@ func (c *replicaConn) Read(p []byte) (int, error) {
 func (c *replicaConn) Write(p []byte) (int, error) {
 	return len(p), nil
 }
+func (c *replicaConn) WriteDirect(p []byte) (int, error) {
+	return c.Conn.Write(p)
+}
 
 func readFullResyncAndRDB(reader *bufio.Reader) error {
 	line, err := reader.ReadString('\n')

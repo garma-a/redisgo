@@ -290,13 +290,18 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn, 
 		var isSlave bool = replicaof != ""
 		handleInfo(conn, db, haveReplicationInfo, isSlave, replicationID, offset)
 	case "REPLCONF":
-		if len(args) != 2 {
-			conn.Write([]byte("-ERR wrong number of arguments\r\n"))
-			return
-		}
 		if replicaof != "" && len(args) == 2 &&
 			strings.ToUpper(args[0]) == "GETACK" && args[1] == "*" {
-			conn.Write([]byte("*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$1\r\n0\r\n"))
+			payload := []byte("*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$1\r\n0\r\n")
+			if dw, ok := conn.(directWriter); ok {
+				dw.WriteDirect(payload)
+			} else {
+				conn.Write(payload)
+			}
+			return
+		}
+		if len(args) != 2 {
+			conn.Write([]byte("-ERR wrong number of arguments\r\n"))
 			return
 		}
 		conn.Write([]byte("+OK\r\n"))
@@ -323,6 +328,9 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn, 
 
 type bufferConn struct {
 	buf bytes.Buffer
+}
+type directWriter interface {
+	WriteDirect([]byte) (int, error)
 }
 
 func (c *bufferConn) Read(_ []byte) (int, error)         { return 0, io.EOF }
