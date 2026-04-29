@@ -69,7 +69,9 @@ func runReplicationHandshake(replicaof string, listeningPort int, db *store.DB, 
 		fmt.Fprintf(os.Stderr, "Invalid port in --replicaof value %q: must be an integer between 1 and 65535\n", replicaof)
 		os.Exit(1)
 	}
-	conn, err := net.Dial("tcp", net.JoinHostPort(hostPortArr[0], hostPortArr[1]))
+	// i'm here inside the replica
+	conn, err := net.Dial("tcp",
+		net.JoinHostPort(hostPortArr[0] /*host master*/, hostPortArr[1] /*port master*/))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to connect to master at %s: %v\n", replicaof, err)
 		os.Exit(1)

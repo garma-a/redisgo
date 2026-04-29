@@ -99,11 +99,14 @@ func HandleClient(conn net.Conn, db *store.DB, replicaof string, replicationId s
 					conn.Write([]byte("-ERR wrong number of arguments\r\n"))
 					continue
 				}
+
+				offset += int64(consumed)
 				inMulti = true
 				queuedCommands = queuedCommands[:0]
 				conn.Write([]byte("+OK\r\n"))
 
 			case "EXEC":
+
 				if len(args) != 0 {
 					conn.Write([]byte("-ERR wrong number of arguments\r\n"))
 					continue
@@ -112,6 +115,8 @@ func HandleClient(conn net.Conn, db *store.DB, replicaof string, replicationId s
 					conn.Write([]byte("-ERR EXEC without MULTI\r\n"))
 					continue
 				}
+
+				offset += int64(consumed)
 
 				if len(queuedCommands) == 0 {
 					inMulti = false
@@ -127,7 +132,7 @@ func HandleClient(conn net.Conn, db *store.DB, replicaof string, replicationId s
 						continue
 					}
 					capture := &bufferConn{}
-					executeCommand(strings.ToUpper(queued[0]), queued[1:], db, capture, replicaof, replicationId, offset)
+					executeCommand(strings.ToUpper(queued[0]), queued[1:], db, capture, replicaof, replicationId, offset, consumed)
 					responses = append(responses, capture.Bytes())
 				}
 
@@ -149,6 +154,7 @@ func HandleClient(conn net.Conn, db *store.DB, replicaof string, replicationId s
 					conn.Write([]byte("-ERR DISCARD without MULTI\r\n"))
 					continue
 				}
+				offset += int64(consumed)
 				inMulti = false
 				queuedCommands = queuedCommands[:0]
 				conn.Write([]byte("+OK\r\n"))
@@ -157,23 +163,25 @@ func HandleClient(conn net.Conn, db *store.DB, replicaof string, replicationId s
 				if inMulti {
 					queuedCopy := append([]string(nil), parts...)
 					queuedCommands = append(queuedCommands, queuedCopy)
+					offset += int64(consumed)
 					conn.Write([]byte("+QUEUED\r\n"))
 					continue
 				}
-
-				executeCommand(command, args, db, conn, replicaof, replicationId, offset)
+				offset += int64(consumed)
+				executeCommand(command, args, db, conn, replicaof, replicationId, offset, consumed)
 			}
 		}
 	}
 }
 
-func executeCommand(command string, args []string, db *store.DB, conn net.Conn, replicaof string, replicationID string, offset int64) {
+func executeCommand(command string, args []string, db *store.DB, conn net.Conn, replicaof string, replicationID string, offset int64, consumed int) {
 	switch command {
 	case "PING":
 		if len(args) != 0 {
 			conn.Write([]byte("-ERR wrong number of arguments\r\n"))
 			return
 		}
+
 		conn.Write([]byte("+PONG\r\n"))
 
 	case "ECHO":
@@ -292,7 +300,8 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn, 
 	case "REPLCONF":
 		if replicaof != "" && len(args) == 2 &&
 			strings.ToUpper(args[0]) == "GETACK" && args[1] == "*" {
-			payload := []byte("*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$1\r\n0\r\n")
+			offsetStr := fmt.Sprintf("%d", offset-int64(consumed))
+			payload := fmt.Appendf(nil, "*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$%d\r\n%s\r\n", len(offsetStr), offsetStr)
 			if dw, ok := conn.(directWriter); ok {
 				dw.WriteDirect(payload)
 			} else {
