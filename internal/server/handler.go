@@ -294,7 +294,8 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn, 
 			conn.Write([]byte("-ERR wrong number of arguments\r\n"))
 			return
 		}
-		if replicaof != "" && args[0] == "GETACK" && args[1] == "*" {
+		if replicaof != "" && len(args) == 2 &&
+			strings.ToUpper(args[0]) == "GETACK" && args[1] == "*" {
 			conn.Write([]byte("*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$1\r\n0\r\n"))
 			return
 		}
