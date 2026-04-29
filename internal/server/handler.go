@@ -287,15 +287,16 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn, 
 		if len(args) == 1 {
 			haveReplicationInfo = true
 		}
-		var isSlave bool = replicaof != "master server"
+		var isSlave bool = replicaof != ""
 		handleInfo(conn, db, haveReplicationInfo, isSlave, replicationID, offset)
 	case "REPLCONF":
 		if len(args) != 2 {
 			conn.Write([]byte("-ERR wrong number of arguments\r\n"))
 			return
 		}
-		if replicaof != "master server" && args[0] == "GETACK" && args[1] == "*" {
+		if replicaof != "" && args[0] == "GETACK" && args[1] == "*" {
 			conn.Write([]byte("*3\r\n$8\r\nREPLCONF\r\n$3\r\nACK\r\n$1\r\n0\r\n"))
+			return
 		}
 		conn.Write([]byte("+OK\r\n"))
 	case "PSYNC":
