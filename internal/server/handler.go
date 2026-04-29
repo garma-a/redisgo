@@ -329,6 +329,12 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn, 
 		conn.Write([]byte(fmt.Sprintf("$%d\r\n", len(rdbBytes))))
 		conn.Write(rdbBytes)
 		addReplicationsConn(conn)
+	case "WAIT":
+		if len(args) != 2 {
+			conn.Write([]byte("-ERR wrong number of arguments\r\n"))
+			return
+		}
+		conn.Write([]byte(":0\r\n"))
 
 	default:
 		conn.Write([]byte("-ERR unknown command\r\n"))
