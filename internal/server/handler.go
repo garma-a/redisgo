@@ -7,33 +7,15 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/GARMA-A/redisgo/internal/resp"
 	"github.com/GARMA-A/redisgo/internal/store"
 )
 
-var (
-	replicationsConn  map[net.Conn]struct{} = make(map[net.Conn]struct{})
-	replicationConnMu sync.RWMutex          = sync.RWMutex{}
-)
-
-func addReplicationsConn(conn net.Conn) {
-	replicationConnMu.Lock()
-	replicationsConn[conn] = struct{}{}
-	replicationConnMu.Unlock()
-}
-func getReplicationsConn() []net.Conn {
-	replicationConnMu.RLock()
-	defer replicationConnMu.RUnlock()
-	conns := make([]net.Conn, 0, len(replicationsConn))
-	for conn := range replicationsConn {
-		conns = append(conns, conn)
-	}
-	return conns
-}
+var replicationState = NewReplicationState()
 
 func encodeRespArray(command string, args []string) []byte {
 	var b strings.Builder
@@ -47,14 +29,13 @@ func encodeRespArray(command string, args []string) []byte {
 }
 func propagateIfReplicas(command string, args []string) {
 	payload := encodeRespArray(command, args)
-	for _, conn := range getReplicationsConn() {
+	replicationState.NoteWrite(len(payload))
+	for _, conn := range replicationState.ReplicaConns() {
 		_, err := conn.Write(payload)
 		if err != nil {
 			fmt.Printf("Error propagating to replica: %v\n", err)
 			conn.Close()
-			replicationConnMu.Lock()
-			delete(replicationsConn, conn)
-			replicationConnMu.Unlock()
+			replicationState.RemoveReplica(conn)
 		}
 	}
 
@@ -92,6 +73,7 @@ func HandleClient(conn net.Conn, db *store.DB, replicaof string, replicationId s
 			}
 			command := strings.ToUpper(parts[0])
 			args := parts[1:]
+			offset += int64(consumed)
 
 			switch command {
 			case "MULTI":
@@ -100,7 +82,6 @@ func HandleClient(conn net.Conn, db *store.DB, replicaof string, replicationId s
 					continue
 				}
 
-				offset += int64(consumed)
 				inMulti = true
 				queuedCommands = queuedCommands[:0]
 				conn.Write([]byte("+OK\r\n"))
@@ -115,8 +96,6 @@ func HandleClient(conn net.Conn, db *store.DB, replicaof string, replicationId s
 					conn.Write([]byte("-ERR EXEC without MULTI\r\n"))
 					continue
 				}
-
-				offset += int64(consumed)
 
 				if len(queuedCommands) == 0 {
 					inMulti = false
@@ -140,7 +119,7 @@ func HandleClient(conn net.Conn, db *store.DB, replicaof string, replicationId s
 				queuedCommands = queuedCommands[:0]
 
 				var out strings.Builder
-				out.WriteString(fmt.Sprintf("*%d\r\n", len(responses)))
+				fmt.Fprintf(&out, "*%d\r\n", len(responses))
 				for _, response := range responses {
 					out.Write(response)
 				}
@@ -154,7 +133,6 @@ func HandleClient(conn net.Conn, db *store.DB, replicaof string, replicationId s
 					conn.Write([]byte("-ERR DISCARD without MULTI\r\n"))
 					continue
 				}
-				offset += int64(consumed)
 				inMulti = false
 				queuedCommands = queuedCommands[:0]
 				conn.Write([]byte("+OK\r\n"))
@@ -163,11 +141,9 @@ func HandleClient(conn net.Conn, db *store.DB, replicaof string, replicationId s
 				if inMulti {
 					queuedCopy := append([]string(nil), parts...)
 					queuedCommands = append(queuedCommands, queuedCopy)
-					offset += int64(consumed)
 					conn.Write([]byte("+QUEUED\r\n"))
 					continue
 				}
-				offset += int64(consumed)
 				executeCommand(command, args, db, conn, replicaof, replicationId, offset, consumed)
 			}
 		}
@@ -296,6 +272,15 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn, 
 			haveReplicationInfo = true
 		}
 		var isSlave bool = replicaof != ""
+		if haveReplicationInfo && !isSlave {
+			masterOffset := replicationState.StreamOffset()
+			body := fmt.Sprintf(
+				"role:%s\r\nmaster_replid:%s\r\nmaster_repl_offset:%d",
+				"master", replicationID, masterOffset,
+			)
+			fmt.Fprintf(conn, "$%d\r\n%s\r\n", len(body), body)
+			return
+		}
 		handleInfo(conn, db, haveReplicationInfo, isSlave, replicationID, offset)
 	case "REPLCONF":
 		if replicaof != "" && len(args) == 2 &&
@@ -307,6 +292,18 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn, 
 			} else {
 				conn.Write(payload)
 			}
+			return
+		}
+		if replicaof == "" && len(args) == 2 && strings.ToUpper(args[0]) == "GETACK" && args[1] == "*" {
+			conn.Write([]byte("+OK\r\n"))
+			return
+		}
+		if replicaof == "" && len(args) == 2 && strings.ToUpper(args[0]) == "ACK" {
+			ackOffset, err := strconv.ParseInt(args[1], 10, 64)
+			if err != nil {
+				return
+			}
+			replicationState.RecordAck(conn, ackOffset)
 			return
 		}
 		if len(args) != 2 {
@@ -325,16 +322,48 @@ func executeCommand(command string, args []string, db *store.DB, conn net.Conn, 
 			conn.Write([]byte("-ERR failed to decode RDB data\r\n"))
 			return
 		}
-		conn.Write([]byte(fmt.Sprintf("+FULLRESYNC %s 0\r\n", replicationID)))
-		conn.Write([]byte(fmt.Sprintf("$%d\r\n", len(rdbBytes))))
+		fmt.Fprintf(conn, "+FULLRESYNC %s 0\r\n", replicationID)
+		fmt.Fprintf(conn, "$%d\r\n", len(rdbBytes))
 		conn.Write(rdbBytes)
-		addReplicationsConn(conn)
+		replicationState.AddReplica(conn)
 	case "WAIT":
 		if len(args) != 2 {
 			conn.Write([]byte("-ERR wrong number of arguments\r\n"))
 			return
 		}
-		conn.Write([]byte(fmt.Sprintf(":%d\r\n", len(getReplicationsConn()))))
+		numReplicas, err := strconv.Atoi(args[0])
+		if err != nil || numReplicas < 0 {
+			conn.Write([]byte("-ERR invalid numreplicas\r\n"))
+			return
+		}
+		timeoutMs, err := strconv.Atoi(args[1])
+		if err != nil || timeoutMs < 0 {
+			conn.Write([]byte("-ERR invalid timeout\r\n"))
+			return
+		}
+		if numReplicas == 0 {
+			conn.Write([]byte(":0\r\n"))
+			return
+		}
+		if !replicationState.WritesPending() {
+			fmt.Fprintf(conn, ":%d\r\n", replicationState.ReplicaCount())
+			return
+		}
+		target := replicationState.StreamOffset()
+		if replicationState.ConsumeWritesPending() {
+			payload := []byte("*3\r\n$8\r\nREPLCONF\r\n$6\r\nGETACK\r\n$1\r\n*\r\n")
+			for _, replicaConn := range replicationState.ReplicaConns() {
+				_, writeErr := replicaConn.Write(payload)
+				if writeErr != nil {
+					replicaConn.Close()
+					replicationState.RemoveReplica(replicaConn)
+				}
+			}
+		}
+
+		required := min(numReplicas, replicationState.ReplicaCount())
+		count := replicationState.WaitForAcks(target, required, time.Duration(timeoutMs)*time.Millisecond)
+		fmt.Fprintf(conn, ":%d\r\n", count)
 
 	default:
 		conn.Write([]byte("-ERR unknown command\r\n"))
